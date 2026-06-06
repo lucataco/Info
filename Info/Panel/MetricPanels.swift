@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Routes a `MetricKind` to its detail panel. Hosted in the status-item popover.
 struct MetricPanel: View {
-    static let contentWidth: CGFloat = 300
+    static let contentWidth: CGFloat = 320
     static let padding: CGFloat = 16
     static var panelWidth: CGFloat { contentWidth + padding * 2 }
 
@@ -21,6 +21,8 @@ struct MetricPanel: View {
         }
         .frame(width: Self.contentWidth)
         .padding(Self.padding)
+        .frame(width: Self.panelWidth)
+        .clipped()
     }
 }
 
@@ -39,6 +41,7 @@ private struct PanelHeader: View {
                     .font(.headline)
                 if let trailing { trailing }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
         }
     }
@@ -163,7 +166,11 @@ struct GPUPanel: View {
                 title: "GPU", symbol: MetricKind.gpu.symbolName,
                 fraction: gpu?.utilization ?? 0,
                 trailing: AnyView(
-                    Text(gpu?.name ?? "—").font(.caption).foregroundStyle(.secondary).lineLimit(1)))
+                    Text(gpu?.name ?? "—")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)))
 
             HistoryChart(values: history, tint: Theme.usage(gpu?.utilization ?? 0))
 
@@ -291,6 +298,8 @@ struct NetworkPanel: View {
         VStack(alignment: .leading, spacing: 2) {
             Image(systemName: symbol).foregroundStyle(color)
             Text(value).font(.system(.title3, design: .rounded)).monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
                 .contentTransition(.numericText())
         }
         .frame(maxWidth: .infinity, alignment: .leading)

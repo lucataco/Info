@@ -289,6 +289,15 @@ import Foundation
         #expect(frame.minY >= visible.minY + 8)
         #expect(frame.maxY <= visible.maxY - 8)
     }
+
+    @Test func clampedFrameMovesVisiblePanelBackOnScreen() {
+        let visible = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        let offscreen = NSRect(x: 820, y: 200, width: 360, height: 300)
+        let frame = StatusItemController.clampedFrame(offscreen, visible: visible)
+        #expect(frame.maxX == visible.maxX - 8)
+        #expect(frame.minX >= visible.minX + 8)
+        #expect(frame.minY == offscreen.minY)
+    }
 }
 
 @Suite struct HistoryStatsTests {

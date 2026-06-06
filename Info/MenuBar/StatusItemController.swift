@@ -168,6 +168,7 @@ final class StatusItemController {
         closePopover()
 
         let hosting = NSHostingController(rootView: MetricPanel(kind: bar.kind, state: state, prefs: prefs))
+        hosting.sizingOptions = []
         let fitting = hosting.view.fittingSize
         let size = NSSize(width: MetricPanel.panelWidth,
                           height: min(520, max(180, fitting.height)))
@@ -183,10 +184,16 @@ final class StatusItemController {
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
         panel.contentViewController = hosting
+        panel.setContentSize(size)
         position(panel, below: button)
         installDismissMonitors()
         installPopoverNotifications(for: panel)
         panel.orderFrontRegardless()
+        clampToVisibleScreen(panel, fallback: button.window?.screen)
+        DispatchQueue.main.async { [weak panel, fallback = button.window?.screen] in
+            guard let panel else { return }
+            Self.clamp(panel, fallback: fallback)
+        }
 
         popoverWindow = panel
         popoverKind = bar.kind
@@ -204,12 +211,13 @@ final class StatusItemController {
     }
 
     private static func visibleFrame(containing anchor: NSRect, fallback: NSScreen?) -> NSRect {
+        if let fallback { return fallback.visibleFrame }
+
         let center = NSPoint(x: anchor.midX, y: anchor.midY)
         let screen = NSScreen.screens.first { $0.frame.contains(center) }
             ?? NSScreen.screens.first { $0.frame.intersects(anchor) }
-            ?? fallback
             ?? NSScreen.main
-        return screen?.visibleFrame ?? fallback?.visibleFrame ?? .zero
+        return screen?.visibleFrame ?? .zero
     }
 
     nonisolated static func popoverFrame(anchor: NSRect,
@@ -225,6 +233,32 @@ final class StatusItemController {
                                            margin: margin,
                                            gap: gap),
                       size: constrainedSize)
+    }
+
+    private func clampToVisibleScreen(_ panel: NSPanel, fallback: NSScreen?) {
+        Self.clamp(panel, fallback: fallback)
+    }
+
+    private static func clamp(_ panel: NSPanel, fallback: NSScreen?) {
+        let visible = panel.screen?.visibleFrame ?? fallback?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let frame = clampedFrame(panel.frame, visible: visible)
+        if frame != panel.frame {
+            panel.setFrame(frame, display: true)
+        }
+    }
+
+    nonisolated static func clampedFrame(_ frame: NSRect,
+                                         visible: NSRect,
+                                         margin: CGFloat = 8) -> NSRect {
+        let size = NSSize(width: min(frame.width, max(1, visible.width - margin * 2)),
+                          height: min(frame.height, max(1, visible.height - margin * 2)))
+        let minX = visible.minX + margin
+        let maxX = max(minX, visible.maxX - size.width - margin)
+        let minY = visible.minY + margin
+        let maxY = max(minY, visible.maxY - size.height - margin)
+        let x = min(max(frame.minX, minX), maxX)
+        let y = min(max(frame.minY, minY), maxY)
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
     nonisolated static func popoverOrigin(anchor: NSRect,

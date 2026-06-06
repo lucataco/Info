@@ -104,6 +104,8 @@ struct DualHistoryChart: View {
 }
 
 struct DetailRow: View {
+    private static let valueColumnWidth: CGFloat = 190
+
     let label: String
     let value: String
     var swatch: Color?
@@ -117,11 +119,12 @@ struct DetailRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Text(value)
                 .monospacedDigit()
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(width: Self.valueColumnWidth, alignment: .trailing)
         }
         .frame(maxWidth: .infinity)
         .font(.callout)
