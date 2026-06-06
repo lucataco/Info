@@ -96,18 +96,37 @@ enum Shell {
         } catch {
             return nil
         }
+        let output = ProcessOutput()
+        let outputGroup = DispatchGroup()
+        outputGroup.enter()
+        DispatchQueue.global(qos: .utility).async {
+            output.set(stdout.fileHandleForReading.readDataToEndOfFile())
+            outputGroup.leave()
+        }
         let deadline = Date().addingTimeInterval(timeout)
         while process.isRunning {
             if box.isCancelled || Date() >= deadline {
                 process.terminate()
                 process.waitUntilExit()
+                _ = outputGroup.wait(timeout: .now() + 0.5)
                 return nil
             }
             Thread.sleep(forTimeInterval: 0.02)
         }
         guard !box.isCancelled, process.terminationStatus == 0 else { return nil }
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)
+        guard outputGroup.wait(timeout: .now() + 0.5) == .success else { return nil }
+        return String(data: output.data, encoding: .utf8)
+    }
+}
+
+private final class ProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _data = Data()
+
+    var data: Data { lock.withLock { _data } }
+
+    func set(_ data: Data) {
+        lock.withLock { _data = data }
     }
 }
 

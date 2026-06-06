@@ -4,7 +4,9 @@ import Foundation
 enum Fmt {
     /// e.g. 0.234 -> "23%"
     static func percent(_ fraction: Double) -> String {
-        "\(Int((fraction * 100).rounded()))%"
+        guard fraction.isFinite else { return "—" }
+        let clamped = min(1, max(0, fraction))
+        return "\(Int((clamped * 100).rounded()))%"
     }
 
     /// Binary byte size, e.g. 1536 -> "1.5 KB"

@@ -50,7 +50,7 @@ enum MenuBarSpacing: String, CaseIterable, Sendable {
 
     var leadingPad: CGFloat {
         switch self {
-        case .compact: 1.5
+        case .compact: 0
         case .regular: 3
         case .spacious: 5
         }
@@ -60,7 +60,7 @@ enum MenuBarSpacing: String, CaseIterable, Sendable {
 
     var labelGap: CGFloat {
         switch self {
-        case .compact: 2
+        case .compact: 1
         case .regular: 3
         case .spacious: 5
         }
@@ -68,7 +68,7 @@ enum MenuBarSpacing: String, CaseIterable, Sendable {
 
     var sparkGap: CGFloat {
         switch self {
-        case .compact: 3
+        case .compact: 2
         case .regular: 4
         case .spacious: 6
         }
@@ -76,8 +76,8 @@ enum MenuBarSpacing: String, CaseIterable, Sendable {
 
     func sparkWidth(for kind: MetricKind) -> CGFloat {
         switch (self, kind.isMirrored) {
-        case (.compact, false): 20
-        case (.compact, true): 24
+        case (.compact, false): 16
+        case (.compact, true): 20
         case (.regular, false): 26
         case (.regular, true): 32
         case (.spacious, false): 34

@@ -70,9 +70,15 @@ final class NetworkCollector {
             store = SCDynamicStoreCreate(nil, "com.info.app" as CFString, nil, nil)
         }
         guard let store,
-              let dict = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
-        else { return nil }
-        return dict["PrimaryInterface"] as? String
+              let dict = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
+              let interface = dict["PrimaryInterface"] as? String
+        else {
+            guard let store,
+                  let dict = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv6" as CFString) as? [String: Any]
+            else { return nil }
+            return dict["PrimaryInterface"] as? String
+        }
+        return interface
     }
 
     /// Sum tx/rx bytes. If `interface` is known, only that one; otherwise all
@@ -91,7 +97,11 @@ final class NetworkCollector {
             defer { cursor = entry.pointee.ifa_next }
             let name = String(cString: entry.pointee.ifa_name)
             if let interface, name != interface { continue }
-            if interface == nil, name == "lo0" { continue }
+            if interface == nil, Self.shouldSkipFallbackInterface(name) { continue }
+            let flags = entry.pointee.ifa_flags
+            guard flags & UInt32(IFF_UP) != 0,
+                  flags & UInt32(IFF_RUNNING) != 0,
+                  flags & UInt32(IFF_LOOPBACK) == 0 else { continue }
             guard let addr = entry.pointee.ifa_addr,
                   addr.pointee.sa_family == UInt8(AF_LINK),
                   let raw = entry.pointee.ifa_data else { continue }
@@ -102,5 +112,10 @@ final class NetworkCollector {
             found = true
         }
         return found ? (upload, download) : nil
+    }
+
+    private static func shouldSkipFallbackInterface(_ name: String) -> Bool {
+        let noisyPrefixes = ["lo", "awdl", "llw", "utun", "ipsec", "bridge", "gif", "stf", "p2p"]
+        return noisyPrefixes.contains { name.hasPrefix($0) }
     }
 }

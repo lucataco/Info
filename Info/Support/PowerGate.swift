@@ -21,6 +21,10 @@ final class PowerGate {
     func start() {
         let workspace = NSWorkspace.shared.notificationCenter
 
+        if Self.isScreenLocked {
+            pauseReasons.insert(.screenLocked)
+        }
+
         workspaceTokens.append(workspace.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { self.add(.sleep) }
@@ -39,6 +43,7 @@ final class PowerGate {
             forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { self.remove(.screenLocked) }
         })
+        applyPauseState()
     }
 
     func stop() {
@@ -64,5 +69,10 @@ final class PowerGate {
         let paused = !pauseReasons.isEmpty
         engine.setPaused(paused)
         Log.engine.debug("power gate paused=\(paused)")
+    }
+
+    private static var isScreenLocked: Bool {
+        guard let dictionary = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return dictionary["CGSSessionScreenIsLocked"] as? Bool == true
     }
 }

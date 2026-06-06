@@ -51,6 +51,7 @@ struct NetworkSample: Sendable, Equatable {
 /// One tick's worth of all metrics. Any field may be nil if that collector
 /// could not produce a value this tick (e.g. first sample, missing hardware).
 struct MetricsSnapshot: Sendable {
+    var enabledMetrics: Set<MetricKind>
     var cpu: CPUSample?
     var memory: MemorySample?
     var gpu: GPUSample?

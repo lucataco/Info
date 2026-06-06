@@ -17,6 +17,9 @@ import Foundation
         #expect(rb.values == [2, 3, 4])
         #expect(rb.count == 3)
         #expect(rb.last == 4)
+        rb.removeAll()
+        #expect(rb.values.isEmpty)
+        #expect(rb.last == nil)
     }
 
     @Test func emptyBuffer() {
@@ -51,6 +54,8 @@ import Foundation
         #expect(Fmt.percent(0.234) == "23%")
         #expect(Fmt.percent(0.236) == "24%")
         #expect(Fmt.percent(1.0) == "100%")
+        #expect(Fmt.percent(1.2) == "100%")
+        #expect(Fmt.percent(.nan) == "—")
     }
 
     @Test func bytesScale() {
@@ -200,6 +205,38 @@ import Foundation
         )
         _ = collectors.sample(enabledMetrics: [])
         #expect(counter.count == 0)
+    }
+}
+
+@Suite struct SamplingStateTests {
+    @Test @MainActor func clearsEnabledMetricWhenCollectorFails() {
+        let state = SamplingState()
+        state.ingest(MetricsSnapshot(
+            enabledMetrics: [.cpu],
+            cpu: CPUSample(total: 0.5, system: 0.2, user: 0.3, idle: 0.5, perCore: []),
+            memory: nil,
+            gpu: nil,
+            network: nil))
+        #expect(state.cpu != nil)
+        #expect(!state.cpuHistory.isEmpty)
+
+        state.ingest(MetricsSnapshot(enabledMetrics: [.cpu], cpu: nil, memory: nil, gpu: nil, network: nil))
+        #expect(state.cpu == nil)
+        #expect(state.cpuHistory.isEmpty)
+    }
+
+    @Test @MainActor func disabledMetricDoesNotClearExistingValue() {
+        let state = SamplingState()
+        state.ingest(MetricsSnapshot(
+            enabledMetrics: [.cpu],
+            cpu: CPUSample(total: 0.5, system: 0.2, user: 0.3, idle: 0.5, perCore: []),
+            memory: nil,
+            gpu: nil,
+            network: nil))
+
+        state.ingest(MetricsSnapshot(enabledMetrics: [], cpu: nil, memory: nil, gpu: nil, network: nil))
+        #expect(state.cpu != nil)
+        #expect(!state.cpuHistory.isEmpty)
     }
 }
 

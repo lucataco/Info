@@ -118,6 +118,7 @@ struct MemoryPanel: View {
                     DetailRow(label: "App", value: Fmt.bytes(mem.app), swatch: .blue)
                     DetailRow(label: "Wired", value: Fmt.bytes(mem.wired), swatch: .orange)
                     DetailRow(label: "Compressed", value: Fmt.bytes(mem.compressed), swatch: .purple)
+                    DetailRow(label: "Cached", value: Fmt.bytes(mem.cached))
                     DetailRow(label: "Free", value: Fmt.bytes(mem.free), swatch: Color(.tertiaryLabelColor))
                     if mem.swapUsed > 0 {
                         DetailRow(label: "Swap", value: Fmt.bytes(mem.swapUsed))
@@ -224,15 +225,19 @@ struct NetworkPanel: View {
             }
         }
         .onAppear {
-            localIP = NetworkInfo.localIPv4(interface: state.network?.interface)
+            refreshLocalIP(for: state.network)
             extras.start(showIP: prefs.showPublicIP, showLatency: prefs.showConnectivity)
         }
         .onChange(of: prefs.showPublicIP) { _, _ in restartExtras() }
         .onChange(of: prefs.showConnectivity) { _, _ in restartExtras() }
-        .onChange(of: state.network?.interface) { _, interface in
-            localIP = NetworkInfo.localIPv4(interface: interface)
+        .onChange(of: state.network) { _, network in
+            refreshLocalIP(for: network)
         }
         .onDisappear { extras.stop() }
+    }
+
+    private func refreshLocalIP(for network: NetworkSample?) {
+        localIP = NetworkInfo.localAddress(interface: network?.interface)
     }
 
     private func restartExtras() {

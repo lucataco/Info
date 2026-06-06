@@ -48,6 +48,7 @@ enum SnapshotTool {
         let state = SamplingState()
         for _ in 0..<40 {
             state.ingest(MetricsSnapshot(
+                enabledMetrics: Set(MetricKind.allCases),
                 cpu: CPUSample(total: Double.random(in: 0.1...0.7), system: 0.1, user: 0.2, idle: 0.7, perCore: []),
                 memory: MemorySample(total: 137_000_000_000, used: UInt64(Double.random(in: 0.18...0.24) * 137_000_000_000),
                                      free: 0, app: 0, wired: 0, compressed: 0, cached: 0, pressure: .normal, swapTotal: 0, swapUsed: 0),
@@ -57,6 +58,7 @@ enum SnapshotTool {
                                        totalUploaded: 0, totalDownloaded: 0)))
         }
         state.ingest(MetricsSnapshot(
+            enabledMetrics: Set(MetricKind.allCases),
             cpu: CPUSample(total: 0.42, system: 0.12, user: 0.30, idle: 0.58,
                            perCore: (0..<12).map { _ in Double.random(in: 0.05...0.95) }),
             memory: MemorySample(total: 137_000_000_000, used: 30_000_000_000, free: 107_000_000_000,

@@ -11,8 +11,8 @@ final class CPUCollector {
     private var prevCoreTicks: [[Double]]?
 
     func sample() -> CPUSample? {
-        guard let aggregate = readAggregate() else { return nil }
         let perCore = readPerCore() ?? []
+        guard let aggregate = readAggregate() else { return nil }
         return CPUSample(
             total: aggregate.total,
             system: aggregate.system,

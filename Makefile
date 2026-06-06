@@ -7,6 +7,8 @@
 #   make verify   verify app signature + DMG checksum
 #   make notarize submit/staple the DMG (requires NOTARY_PROFILE)
 #   make run      build + launch
+#   make zip      build + zip Info.app for distribution
+#   make release  cut a GitHub release + update the Homebrew tap
 #   make clean    remove build artifacts
 #
 # For distribution to other Macs, sign with a Developer ID and notarize:
@@ -22,6 +24,8 @@ DERIVED  = $(BUILD_DIR)/DerivedData
 APP_PATH = $(DERIVED)/Build/Products/$(CONFIG)/$(APP_NAME).app
 DMG      = $(BUILD_DIR)/$(APP_NAME).dmg
 ICNS     = tools/$(APP_NAME).icns
+VERSION  = $(shell awk -F'"' '/MARKETING_VERSION:/ {print $$2; exit}' project.yml)
+ZIP      = $(BUILD_DIR)/$(APP_NAME)-$(VERSION).zip
 CODE_SIGN_IDENTITY ?= -
 CODE_SIGN_STYLE ?= Manual
 DEVELOPMENT_TEAM ?=
@@ -29,7 +33,7 @@ NOTARY_PROFILE ?=
 
 XCODE_SIGNING = CODE_SIGN_STYLE="$(CODE_SIGN_STYLE)" CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)"
 
-.PHONY: all generate icon build dmg verify notarize run test clean
+.PHONY: all generate icon build dmg zip release verify notarize run test clean
 
 all: dmg
 
@@ -47,6 +51,16 @@ build: generate
 dmg: icon build
 	chmod +x tools/package-dmg.sh
 	./tools/package-dmg.sh "$(APP_PATH)" "$(DMG)" "$(ICNS)"
+
+zip: build
+	@mkdir -p $(BUILD_DIR)
+	rm -f "$(ZIP)"
+	ditto -c -k --sequesterRsrc --keepParent "$(APP_PATH)" "$(ZIP)"
+	@echo "Created $(ZIP)"
+	@shasum -a 256 "$(ZIP)"
+
+release:
+	./tools/release.sh $(VERSION)
 
 verify: dmg
 	codesign --verify --deep --strict --verbose=2 "$(APP_PATH)"

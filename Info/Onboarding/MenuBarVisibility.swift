@@ -12,10 +12,15 @@ enum MenuBarVisibility {
     static func isLikelyVisible(_ items: [NSStatusItem]) -> Bool {
         guard !items.isEmpty else { return false }
         return items.contains { item in
-            guard item.isVisible, let window = item.button?.window else { return false }
-            let frame = window.frame
-            guard frame.width > 1, frame.height > 1 else { return false }
-            return NSScreen.screens.contains { $0.frame.intersects(frame) }
+            guard item.isVisible,
+                  let button = item.button,
+                  !button.isHidden,
+                  button.alphaValue > 0,
+                  !button.bounds.isEmpty,
+                  let window = button.window else { return false }
+            let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
+            guard buttonFrame.width > 1, buttonFrame.height > 1 else { return false }
+            return NSScreen.screens.contains { $0.visibleFrame.intersects(buttonFrame) }
         }
     }
 

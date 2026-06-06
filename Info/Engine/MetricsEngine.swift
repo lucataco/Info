@@ -23,6 +23,7 @@ struct MetricCollectors {
 
     func sample(enabledMetrics: Set<MetricKind>) -> MetricsSnapshot {
         MetricsSnapshot(
+            enabledMetrics: enabledMetrics,
             cpu: enabledMetrics.contains(.cpu) ? cpu() : nil,
             memory: enabledMetrics.contains(.memory) ? memory() : nil,
             gpu: enabledMetrics.contains(.gpu) ? gpu() : nil,
@@ -66,9 +67,7 @@ final class MetricsEngine: @unchecked Sendable {
     func start() {
         queue.async { [weak self] in
             guard let self, self.timer == nil else { return }
-            // Prime collectors so the first emitted sample already has deltas.
-            _ = self.sampleAll()
-            self.installTimer()
+            self.updateTimer(wasActive: false, primeOnStart: true)
             Log.engine.info("Sampling started at \(self.interval, format: .fixed(precision: 1))s")
         }
     }
@@ -80,12 +79,13 @@ final class MetricsEngine: @unchecked Sendable {
         }
     }
 
-    /// Pause/resume sampling without tearing down the timer (cheap; used for
-    /// sleep / screen-lock / occlusion gating).
+    /// Pause/resume sampling for sleep / screen-lock / occlusion gating.
     func setPaused(_ value: Bool) {
         queue.async { [weak self] in
             guard let self else { return }
+            let wasActive = self.isActive
             self.paused = value
+            self.updateTimer(wasActive: wasActive, primeOnStart: true)
             Log.engine.debug("paused=\(value)")
         }
     }
@@ -101,7 +101,9 @@ final class MetricsEngine: @unchecked Sendable {
     func setEnabledMetrics(_ metrics: [MetricKind]) {
         queue.async { [weak self] in
             guard let self else { return }
+            let wasActive = self.isActive
             self.enabledMetrics = Set(metrics)
+            self.updateTimer(wasActive: wasActive, primeOnStart: true)
         }
     }
 
@@ -130,5 +132,27 @@ final class MetricsEngine: @unchecked Sendable {
 
     private func sampleAll() -> MetricsSnapshot {
         collectors.sample(enabledMetrics: enabledMetrics)
+    }
+
+    private var isActive: Bool { !paused && !enabledMetrics.isEmpty }
+
+    private func cancelTimer() {
+        timer?.cancel()
+        timer = nil
+    }
+
+    private func updateTimer(wasActive: Bool, primeOnStart: Bool) {
+        guard isActive else {
+            cancelTimer()
+            return
+        }
+
+        if primeOnStart {
+            _ = sampleAll()
+        }
+
+        if !wasActive || timer == nil {
+            installTimer()
+        }
     }
 }

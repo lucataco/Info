@@ -33,22 +33,27 @@ final class SamplingState {
     }
 
     func ingest(_ snapshot: MetricsSnapshot) {
-        if let c = snapshot.cpu {
-            cpu = c
-            cpuHistory.append(c.total)
+        if snapshot.enabledMetrics.contains(.cpu) {
+            cpu = snapshot.cpu
+            if let c = snapshot.cpu { cpuHistory.append(c.total) } else { cpuHistory.removeAll() }
         }
-        if let m = snapshot.memory {
-            memory = m
-            memoryHistory.append(m.usage)
+        if snapshot.enabledMetrics.contains(.memory) {
+            memory = snapshot.memory
+            if let m = snapshot.memory { memoryHistory.append(m.usage) } else { memoryHistory.removeAll() }
         }
-        if let g = snapshot.gpu {
-            gpu = g
-            gpuHistory.append(g.utilization)
+        if snapshot.enabledMetrics.contains(.gpu) {
+            gpu = snapshot.gpu
+            if let g = snapshot.gpu { gpuHistory.append(g.utilization) } else { gpuHistory.removeAll() }
         }
-        if let n = snapshot.network {
-            network = n
-            netUpHistory.append(Double(n.uploadBytesPerSec))
-            netDownHistory.append(Double(n.downloadBytesPerSec))
+        if snapshot.enabledMetrics.contains(.network) {
+            network = snapshot.network
+            if let n = snapshot.network {
+                netUpHistory.append(Double(n.uploadBytesPerSec))
+                netDownHistory.append(Double(n.downloadBytesPerSec))
+            } else {
+                netUpHistory.removeAll()
+                netDownHistory.removeAll()
+            }
         }
         onUpdate?()
     }

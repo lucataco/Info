@@ -26,6 +26,7 @@ final class StatusItemController {
     private var popoverKind: MetricKind?
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
+    private var popoverNotificationTokens: [NSObjectProtocol] = []
 
     /// Invoked when the user picks "Settings…" from the right-click menu.
     var onOpenSettings: (() -> Void)?
@@ -142,6 +143,7 @@ final class StatusItemController {
         guard let bar = bars.first(where: { $0.item.button === sender }) else { return }
         let isRight = NSApp.currentEvent?.type == .rightMouseUp
         if isRight {
+            closePopover()
             showMenu(for: bar, on: sender)
         } else {
             togglePopover(for: bar, on: sender)
@@ -166,7 +168,6 @@ final class StatusItemController {
         closePopover()
 
         let hosting = NSHostingController(rootView: MetricPanel(kind: bar.kind, state: state, prefs: prefs))
-        hosting.view.layoutSubtreeIfNeeded()
         let fitting = hosting.view.fittingSize
         let size = NSSize(width: max(300, fitting.width),
                           height: min(520, max(180, fitting.height)))
@@ -178,12 +179,13 @@ final class StatusItemController {
         panel.titlebarAppearsTransparent = true
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = true
+        panel.hidesOnDeactivate = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
         panel.contentViewController = hosting
         position(panel, below: button)
         installDismissMonitors()
+        installPopoverNotifications(for: panel)
         panel.orderFrontRegardless()
 
         popoverWindow = panel
@@ -222,6 +224,30 @@ final class StatusItemController {
         popoverWindow = nil
         popoverKind = nil
         removeDismissMonitors()
+        removePopoverNotifications()
+    }
+
+    private func installPopoverNotifications(for panel: NSPanel) {
+        removePopoverNotifications()
+        let center = NotificationCenter.default
+        popoverNotificationTokens.append(center.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: panel,
+            queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePopover() }
+        })
+        popoverNotificationTokens.append(center.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePopover() }
+        })
+    }
+
+    private func removePopoverNotifications() {
+        let center = NotificationCenter.default
+        popoverNotificationTokens.forEach(center.removeObserver)
+        popoverNotificationTokens.removeAll()
     }
 
     private func installDismissMonitors() {
@@ -231,6 +257,9 @@ final class StatusItemController {
             if event.type == .keyDown && event.keyCode == 53 { // Escape
                 self.closePopover()
                 return nil
+            }
+            if self.isStatusButtonEvent(event) {
+                return event
             }
             if let panel = self.popoverWindow, event.window !== panel {
                 self.closePopover()
@@ -251,6 +280,16 @@ final class StatusItemController {
             NSEvent.removeMonitor(globalEventMonitor)
             self.globalEventMonitor = nil
         }
+    }
+
+    private func isStatusButtonEvent(_ event: NSEvent) -> Bool {
+        guard let window = event.window else { return false }
+        for item in statusItems {
+            guard let button = item.button, button.window === window else { continue }
+            let location = button.convert(event.locationInWindow, from: nil)
+            if button.bounds.contains(location) { return true }
+        }
+        return false
     }
 
     private func showMenu(for bar: Bar, on button: NSStatusBarButton) {

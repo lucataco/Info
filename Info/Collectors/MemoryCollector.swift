@@ -31,20 +31,20 @@ final class MemoryCollector {
         guard result == KERN_SUCCESS, totalBytes > 0 else { return nil }
 
         let page = pageSize
-        let active = UInt64(stats.active_count) * page
-        let inactive = UInt64(stats.inactive_count) * page
+        let internalPages = UInt64(stats.internal_page_count) * page
+        let freePages = UInt64(stats.free_count) * page
         let speculative = UInt64(stats.speculative_count) * page
         let wired = UInt64(stats.wire_count) * page
         let compressed = UInt64(stats.compressor_page_count) * page
         let purgeable = UInt64(stats.purgeable_count) * page
         let external = UInt64(stats.external_page_count) * page
 
-        // Same definition Activity Monitor uses: app + wired + compressed.
-        let gross = active + inactive + speculative + wired + compressed
-        let cache = purgeable + external
-        let used = gross > cache ? gross - cache : 0
-        let free = totalBytes > used ? totalBytes - used : 0
-        let app = used > (wired + compressed) ? used - wired - compressed : 0
+        // Activity Monitor's top-line "Memory Used" is closest to app + wired + compressed.
+        let app = internalPages > purgeable ? internalPages - purgeable : 0
+        let used = min(totalBytes, app + wired + compressed)
+        let remaining = totalBytes > used ? totalBytes - used : 0
+        let cache = min(external + purgeable, remaining)
+        let free = min(freePages + speculative, remaining > cache ? remaining - cache : 0)
         let swap = swapUsage()
 
         return MemorySample(

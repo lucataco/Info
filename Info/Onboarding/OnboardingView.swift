@@ -16,6 +16,8 @@ struct OnboardingView: View {
 
     @State private var step: Int
     @State private var menuBarVisible = false
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var requiresLoginApproval = LaunchAtLogin.requiresApproval
 
     private let lastStep = 4
 
@@ -45,6 +47,10 @@ struct OnboardingView: View {
         }
         .frame(width: 540, height: 500)
         .background(.background)
+        .onAppear(perform: refreshLaunchAtLogin)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshLaunchAtLogin()
+        }
     }
 
     @ViewBuilder
@@ -117,15 +123,34 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
 
             Toggle(isOn: Binding(
-                get: { LaunchAtLogin.isEnabled },
-                set: { LaunchAtLogin.setEnabled($0) }
+                get: { launchAtLogin },
+                set: { enabled in
+                    LaunchAtLogin.setEnabled(enabled)
+                    refreshLaunchAtLogin()
+                }
             )) {
                 Text("Launch Info at login")
             }
             .toggleStyle(.switch)
             .padding(.horizontal, 80)
             .padding(.top, 6)
+
+            if requiresLoginApproval {
+                Text("macOS needs approval in Login Items before Info can launch automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Open Login Items Settings…") {
+                    LaunchAtLogin.openSystemSettings()
+                }
+                .controlSize(.small)
+            }
         }
+    }
+
+    private func refreshLaunchAtLogin() {
+        launchAtLogin = LaunchAtLogin.isEnabled
+        requiresLoginApproval = LaunchAtLogin.requiresApproval
     }
 
     private var metricsStep: some View {

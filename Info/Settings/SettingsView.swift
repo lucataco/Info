@@ -174,10 +174,19 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear(perform: refreshLaunchAtLogin)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshLaunchAtLogin()
+        }
     }
 
     private var appVersion: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         return "v\(v)"
+    }
+
+    private func refreshLaunchAtLogin() {
+        launchAtLogin = LaunchAtLogin.isEnabled
+        requiresLoginApproval = LaunchAtLogin.requiresApproval
     }
 }

@@ -24,6 +24,11 @@ struct RingBuffer<Element: Sendable>: Sendable {
         }
     }
 
+    mutating func removeAll() {
+        storage.removeAll(keepingCapacity: true)
+        head = 0
+    }
+
     /// Elements in chronological order (oldest first, newest last).
     var values: [Element] {
         guard storage.count == capacity else { return storage }
