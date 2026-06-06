@@ -298,6 +298,12 @@ import Foundation
         #expect(frame.minX >= visible.minX + 8)
         #expect(frame.minY == offscreen.minY)
     }
+
+    @Test @MainActor func popoverSizeDoesNotCollapseWhenFittingHeightIsUnavailable() {
+        let size = StatusItemController.popoverSize(fitting: .zero, width: MetricPanel.panelWidth)
+        #expect(size.width == MetricPanel.panelWidth)
+        #expect(size.height == 300)
+    }
 }
 
 @Suite struct HistoryStatsTests {

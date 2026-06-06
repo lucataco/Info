@@ -168,10 +168,9 @@ final class StatusItemController {
         closePopover()
 
         let hosting = NSHostingController(rootView: MetricPanel(kind: bar.kind, state: state, prefs: prefs))
-        hosting.sizingOptions = []
-        let fitting = hosting.view.fittingSize
-        let size = NSSize(width: MetricPanel.panelWidth,
-                          height: min(520, max(180, fitting.height)))
+        let fitting = hosting.sizeThatFits(in: NSSize(width: MetricPanel.panelWidth,
+                                                      height: .greatestFiniteMagnitude))
+        let size = Self.popoverSize(fitting: fitting, width: MetricPanel.panelWidth)
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.titled, .fullSizeContentView],
                             backing: .buffered,
@@ -218,6 +217,14 @@ final class StatusItemController {
             ?? NSScreen.screens.first { $0.frame.intersects(anchor) }
             ?? NSScreen.main
         return screen?.visibleFrame ?? .zero
+    }
+
+    nonisolated static func popoverSize(fitting: NSSize,
+                                        width: CGFloat,
+                                        minHeight: CGFloat = 300,
+                                        maxHeight: CGFloat = 520) -> NSSize {
+        let measuredHeight = fitting.height.isFinite ? fitting.height : 0
+        return NSSize(width: width, height: min(maxHeight, max(minHeight, measuredHeight)))
     }
 
     nonisolated static func popoverFrame(anchor: NSRect,
