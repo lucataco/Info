@@ -15,7 +15,7 @@
 #
 # Environment overrides:
 #   TAP_DIR    Path to the homebrew-tap checkout
-#              (default: ../homebrew-tap relative to this repo)
+#              (default: probes ../homebrew-tap then ../../homebrew-tap)
 #   APP_REPO   owner/name of the app repo (default: lucataco/Info)
 #   SKIP_TAP=1 Build + publish the release but do not touch the tap.
 #
@@ -27,7 +27,13 @@ cd "$REPO_ROOT"
 
 APP_NAME="Info"
 APP_REPO="${APP_REPO:-lucataco/Info}"
-TAP_DIR="${TAP_DIR:-$REPO_ROOT/../homebrew-tap}"
+if [ -z "${TAP_DIR:-}" ]; then
+  if [ -d "$REPO_ROOT/../homebrew-tap" ]; then
+    TAP_DIR="$REPO_ROOT/../homebrew-tap"
+  else
+    TAP_DIR="$REPO_ROOT/../../homebrew-tap"
+  fi
+fi
 CASK_FILE_NAME="info.rb"
 
 err() { printf 'error: %s\n' "$*" >&2; exit 1; }

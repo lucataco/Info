@@ -81,8 +81,9 @@ GitHub release tagged `v<version>` with the zip attached, then bumps the `versio
 `sha256` in the tap's `Casks/info.rb` and pushes the tap.
 
 Requirements: an authenticated [`gh`](https://cli.github.com) CLI, plus `xcodegen` and
-the `homebrew-tap` checkout beside this repo (override with `TAP_DIR=...`). The working
-tree must be clean so the release matches the committed source.
+the `homebrew-tap` checkout at `../homebrew-tap` or `../../homebrew-tap` (override with
+`TAP_DIR=...`). The working tree must be clean so the release matches the committed
+source.
 
 To build and zip without publishing:
 
