@@ -20,6 +20,7 @@ final class Preferences {
         static let menuBarLabel = "menuBarLabel"
         static let menuBarTextSize = "menuBarTextSize"
         static let menuBarSpacing = "menuBarSpacing"
+        static let menuBarLayout = "menuBarLayout"
     }
 
     /// Which metrics appear in the menu bar, in canonical order.
@@ -42,13 +43,15 @@ final class Preferences {
     var menuBarLabel: MenuBarLabelStyle { didSet { defaults.set(menuBarLabel.rawValue, forKey: Keys.menuBarLabel) } }
     var menuBarTextSize: MenuBarTextSize { didSet { defaults.set(menuBarTextSize.rawValue, forKey: Keys.menuBarTextSize) } }
     var menuBarSpacing: MenuBarSpacing { didSet { defaults.set(menuBarSpacing.rawValue, forKey: Keys.menuBarSpacing) } }
+    var menuBarLayout: MenuBarLayout { didSet { defaults.set(menuBarLayout.rawValue, forKey: Keys.menuBarLayout) } }
 
     var menuBarStyle: MenuBarStyle {
         MenuBarStyle(showSparkline: showMenuBarSparkline,
                      showValue: showMenuBarValue,
                      label: menuBarLabel,
                      textSize: menuBarTextSize,
-                     spacing: menuBarSpacing)
+                     spacing: menuBarSpacing,
+                     layout: menuBarLayout)
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -77,6 +80,7 @@ final class Preferences {
         menuBarLabel = MenuBarLabelStyle(rawValue: defaults.string(forKey: Keys.menuBarLabel) ?? "") ?? .text
         menuBarTextSize = MenuBarTextSize(rawValue: defaults.string(forKey: Keys.menuBarTextSize) ?? "") ?? .medium
         menuBarSpacing = MenuBarSpacing(rawValue: defaults.string(forKey: Keys.menuBarSpacing) ?? "") ?? .compact
+        menuBarLayout = MenuBarLayout(rawValue: defaults.string(forKey: Keys.menuBarLayout) ?? "") ?? .inline
     }
 
     func isEnabled(_ kind: MetricKind) -> Bool { enabledMetrics.contains(kind) }

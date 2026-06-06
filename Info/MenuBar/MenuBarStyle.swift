@@ -86,6 +86,28 @@ enum MenuBarSpacing: String, CaseIterable, Sendable {
     }
 }
 
+/// How the label and value are arranged relative to each other.
+enum MenuBarLayout: String, CaseIterable, Sendable {
+    /// Value right-aligned in a stable, reserved column. Keeps a fixed width
+    /// (no per-tick jiggle) but leaves a gap between a short value and the label.
+    case inline
+    /// Value left-aligned so it hugs the label, removing the leading gap. The
+    /// reserved column is preserved for width stability, so the slack moves to
+    /// the trailing edge instead of sitting between the label and the value.
+    case tight
+    /// Label stacked on top of the value, drawn with smaller type so both lines
+    /// fit within the menu bar's height.
+    case stacked
+
+    var title: String {
+        switch self {
+        case .inline: "Inline"
+        case .tight: "Tight"
+        case .stacked: "Stacked"
+        }
+    }
+}
+
 /// The full set of menu-bar appearance options.
 struct MenuBarStyle: Sendable, Equatable {
     var showSparkline: Bool = false
@@ -93,4 +115,5 @@ struct MenuBarStyle: Sendable, Equatable {
     var label: MenuBarLabelStyle = .text
     var textSize: MenuBarTextSize = .medium
     var spacing: MenuBarSpacing = .compact
+    var layout: MenuBarLayout = .inline
 }

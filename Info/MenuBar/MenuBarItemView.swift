@@ -55,16 +55,44 @@ final class MenuBarItemView: NSView {
 
     // MARK: - Fonts & sizing
 
+    /// The layout actually used for drawing. Stacking a label over network's
+    /// already two-line value would need a third line that won't fit, so
+    /// mirrored metrics fall back to inline when `.stacked` is requested.
+    private var effectiveLayout: MenuBarLayout {
+        if kind.isMirrored && style.layout == .stacked { return .inline }
+        return style.layout
+    }
+
+    /// Stacked layouts split the bar's height across two lines, so the type is
+    /// shrunk to fit. The configured text size still nudges these sizes.
+    private var stackedValueSize: CGFloat {
+        switch style.textSize {
+        case .small: 9
+        case .medium: 10
+        case .large: 10.5
+        }
+    }
+
+    private var stackedLabelSize: CGFloat { stackedValueSize - 1.5 }
+
     private var valueFont: NSFont {
-        let size = kind.isMirrored ? max(8, style.textSize.points - 2.5) : style.textSize.points
+        let size: CGFloat
+        if effectiveLayout == .stacked {
+            size = stackedValueSize
+        } else {
+            size = kind.isMirrored ? max(8, style.textSize.points - 2.5) : style.textSize.points
+        }
         return .monospacedDigitSystemFont(ofSize: size, weight: .semibold)
     }
 
     private var labelFont: NSFont {
-        .systemFont(ofSize: max(8, style.textSize.points - 1), weight: .semibold)
+        let size = effectiveLayout == .stacked ? stackedLabelSize : max(8, style.textSize.points - 1)
+        return .systemFont(ofSize: size, weight: .semibold)
     }
 
-    private var glyphSize: CGFloat { style.textSize.points + 2 }
+    private var glyphSize: CGFloat {
+        effectiveLayout == .stacked ? stackedValueSize + 1 : style.textSize.points + 2
+    }
 
     /// Width reserved for the value — sized to the widest expected string so the
     /// item width is stable (no per-tick jiggle).
@@ -90,6 +118,10 @@ final class MenuBarItemView: NSView {
 
     /// The status item should be exactly this wide.
     func preferredWidth() -> CGFloat {
+        effectiveLayout == .stacked ? stackedWidth() : inlineWidth()
+    }
+
+    private func inlineWidth() -> CGFloat {
         var width = style.spacing.leadingPad
         var hasContent = false
         let lw = labelWidth
@@ -112,11 +144,35 @@ final class MenuBarItemView: NSView {
         return ceil(width)
     }
 
+    /// Stacked items are as wide as their widest line (label or value), with the
+    /// sparkline, if any, trailing alongside the stacked text.
+    private func stackedWidth() -> CGFloat {
+        let column = max(labelWidth, style.showValue ? reservedValueWidth : 0)
+        var hasContent = column > 0
+        var width = style.spacing.leadingPad + column
+        if style.showSparkline {
+            if hasContent { width += style.spacing.sparkGap }
+            width += sparkWidth
+            hasContent = true
+        }
+        if !hasContent { width += 10 }
+        width += style.spacing.trailingPad
+        return ceil(width)
+    }
+
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         NSBezierPath(rect: bounds).addClip()
         let h = bounds.height
+        if effectiveLayout == .stacked {
+            drawStacked(height: h)
+        } else {
+            drawInline(height: h)
+        }
+    }
+
+    private func drawInline(height h: CGFloat) {
         var x = style.spacing.leadingPad
         var hasContent = false
 
@@ -126,7 +182,10 @@ final class MenuBarItemView: NSView {
 
         if style.showValue {
             if hasContent { x += style.spacing.labelGap }
-            drawValue(x: x, width: reservedValueWidth, height: h)
+            // Tight pulls the value up against the label; Inline right-aligns it
+            // within the reserved column (leaving the slack on the left).
+            let align: ValueAlignment = effectiveLayout == .tight ? .left : .right
+            drawValue(x: x, width: reservedValueWidth, height: h, align: align)
             x += reservedValueWidth
             hasContent = true
         }
@@ -139,6 +198,33 @@ final class MenuBarItemView: NSView {
         }
 
         if !hasContent {
+            drawFallbackDot(height: h)
+        }
+    }
+
+    /// Label on top, value beneath — each centered within its half of the bar.
+    private func drawStacked(height h: CGFloat) {
+        let x = style.spacing.leadingPad
+        let column = max(labelWidth, style.showValue ? reservedValueWidth : 0)
+        let hasLabel = style.label != .none && labelWidth > 0
+        let hasValue = style.showValue
+        let hasText = column > 0
+
+        if hasLabel && hasValue {
+            drawStackedLabel(in: NSRect(x: x, y: h / 2, width: column, height: h / 2))
+            drawValueCentered(in: NSRect(x: x, y: 0, width: column, height: h / 2))
+        } else if hasLabel {
+            drawStackedLabel(in: NSRect(x: x, y: 0, width: column, height: h))
+        } else if hasValue {
+            drawValueCentered(in: NSRect(x: x, y: 0, width: column, height: h))
+        }
+
+        var trailingX = x + column
+        if style.showSparkline {
+            if hasText { trailingX += style.spacing.sparkGap }
+            let rect = NSRect(x: trailingX, y: 3, width: sparkWidth, height: h - 6)
+            if kind.isMirrored { drawMirrored(in: rect) } else { drawSingle(in: rect) }
+        } else if !hasText {
             drawFallbackDot(height: h)
         }
     }
@@ -171,7 +257,9 @@ final class MenuBarItemView: NSView {
         NSBezierPath(ovalIn: rect).fill()
     }
 
-    private func drawValue(x: CGFloat, width: CGFloat, height h: CGFloat) {
+    private enum ValueAlignment { case left, right }
+
+    private func drawValue(x: CGFloat, width: CGFloat, height h: CGFloat, align: ValueAlignment) {
         guard !valueLines.isEmpty else { return }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: valueFont,
@@ -183,10 +271,41 @@ final class MenuBarItemView: NSView {
         var y = (h + total) / 2 - lineHeight
         for line in valueLines {
             let string = NSAttributedString(string: line, attributes: attrs)
-            let lineX = x + max(0, width - string.size().width)
+            let slack = max(0, width - string.size().width)
+            let lineX = align == .left ? x : x + slack
             string.draw(at: NSPoint(x: lineX, y: y))
             y -= lineHeight
         }
+    }
+
+    // MARK: - Stacked drawing helpers
+
+    private func drawStackedLabel(in rect: NSRect) {
+        switch style.label {
+        case .none:
+            return
+        case .icon where symbol != nil:
+            let size = glyphSize
+            let iconRect = NSRect(x: rect.midX - size / 2, y: rect.midY - size / 2,
+                                  width: size, height: size)
+            tintedSymbol(size: size, color: .labelColor)?.draw(in: iconRect)
+        default:
+            drawCenteredString(kind.shortLabel, font: labelFont,
+                               color: .secondaryLabelColor, in: rect)
+        }
+    }
+
+    private func drawValueCentered(in rect: NSRect) {
+        guard let line = valueLines.first else { return }
+        drawCenteredString(line, font: valueFont, color: .labelColor, in: rect)
+    }
+
+    private func drawCenteredString(_ text: String, font: NSFont, color: NSColor, in rect: NSRect) {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        let string = NSAttributedString(string: text, attributes: attrs)
+        let size = string.size()
+        let origin = NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2)
+        string.draw(at: origin)
     }
 
     /// Renders the SF Symbol into a transparent scratch image and tints it there,

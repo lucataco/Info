@@ -82,6 +82,15 @@ private struct MenuBarTab: View {
                 }
                 .pickerStyle(.segmented)
 
+                Picker("Layout", selection: Binding(
+                    get: { prefs.menuBarLayout },
+                    set: { prefs.menuBarLayout = $0; onStyleChanged() }
+                )) {
+                    ForEach(MenuBarLayout.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .disabled(!prefs.showMenuBarValue)
+
                 Picker("Text size", selection: Binding(
                     get: { prefs.menuBarTextSize },
                     set: { prefs.menuBarTextSize = $0; onStyleChanged() }
@@ -116,7 +125,7 @@ private struct MenuBarTab: View {
             }
 
             Section {
-                Text("Tip: use Compact spacing to match native menu extras. Keep graph off for the most reliable menu bar fit; click any item for full charts and details.")
+                Text("Tip: Layout controls how the value sits next to the label — Inline keeps a fixed column, Tight pulls the value up against the label, and Stacked puts the label above the value. Use Compact spacing to match native menu extras, and keep graph off for the most reliable menu bar fit; click any item for full charts and details.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
