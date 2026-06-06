@@ -37,6 +37,10 @@ struct GPUSample: Sendable, Equatable {
     var utilization: Double
     var renderUtilization: Double?
     var tilerUtilization: Double?
+    /// GPU memory currently in use, in bytes (when the driver reports it).
+    var inUseMemory: UInt64?
+    /// GPU memory allocated, in bytes (when the driver reports it).
+    var allocatedMemory: UInt64?
 }
 
 struct NetworkSample: Sendable, Equatable {

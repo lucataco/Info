@@ -153,6 +153,7 @@ struct GPUPanel: View {
 
     var body: some View {
         let gpu = state.gpu
+        let history = state.gpuHistory.values
         VStack(alignment: .leading, spacing: 14) {
             PanelHeader(
                 title: "GPU", symbol: MetricKind.gpu.symbolName,
@@ -160,11 +161,12 @@ struct GPUPanel: View {
                 trailing: AnyView(
                     Text(gpu?.name ?? "—").font(.caption).foregroundStyle(.secondary).lineLimit(1)))
 
-            HistoryChart(values: state.gpuHistory.values, tint: Theme.usage(gpu?.utilization ?? 0))
+            HistoryChart(values: history, tint: Theme.usage(gpu?.utilization ?? 0))
 
             if let gpu {
-                VStack(spacing: 6) {
-                    DetailRow(label: "Utilization", value: Fmt.percent(gpu.utilization))
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionLabel(text: "Utilization")
+                    DetailRow(label: "Device", value: Fmt.percent(gpu.utilization))
                     if let r = gpu.renderUtilization {
                         DetailRow(label: "Renderer", value: Fmt.percent(r))
                     }
@@ -174,6 +176,32 @@ struct GPUPanel: View {
                     if let t = temperature.celsius {
                         DetailRow(label: "Temperature", value: "\(Int(t))°C")
                     }
+                }
+
+                if gpu.inUseMemory != nil || gpu.allocatedMemory != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        SectionLabel(text: "Memory")
+                        if let alloc = gpu.allocatedMemory, alloc > 0 {
+                            let inUse = min(gpu.inUseMemory ?? 0, alloc)
+                            StackedBar(segments: [
+                                .init(value: Double(inUse), color: .purple),
+                                .init(value: Double(alloc - inUse), color: Color(.tertiaryLabelColor)),
+                            ])
+                        }
+                        if let inUse = gpu.inUseMemory {
+                            DetailRow(label: "In Use", value: Fmt.bytes(inUse), swatch: .purple)
+                        }
+                        if let alloc = gpu.allocatedMemory {
+                            DetailRow(label: "Allocated", value: Fmt.bytes(alloc),
+                                      swatch: Color(.tertiaryLabelColor))
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionLabel(text: "Session")
+                    DetailRow(label: "Peak", value: Fmt.percent(history.peak))
+                    DetailRow(label: "Average", value: Fmt.percent(history.mean))
                 }
             } else {
                 Text("No GPU data").font(.caption).foregroundStyle(.secondary)
@@ -197,6 +225,8 @@ struct NetworkPanel: View {
 
     var body: some View {
         let net = state.network
+        let downHistory = state.netDownHistory.values
+        let upHistory = state.netUpHistory.values
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 16) {
                 bigRate(symbol: "arrow.down", color: Theme.download,
@@ -205,13 +235,21 @@ struct NetworkPanel: View {
                         value: net.map { Fmt.rate($0.uploadBytesPerSec) } ?? "—")
             }
 
-            DualHistoryChart(download: state.netDownHistory.values,
-                             upload: state.netUpHistory.values)
+            DualHistoryChart(download: downHistory, upload: upHistory)
 
             if let net {
-                VStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionLabel(text: "Session")
+                    DetailRow(label: "Peak ↓", value: Fmt.rate(UInt64(downHistory.peak)), swatch: Theme.download)
+                    DetailRow(label: "Peak ↑", value: Fmt.rate(UInt64(upHistory.peak)), swatch: Theme.upload)
+                    DetailRow(label: "Average ↓", value: Fmt.rate(UInt64(downHistory.mean)), swatch: Theme.download)
+                    DetailRow(label: "Average ↑", value: Fmt.rate(UInt64(upHistory.mean)), swatch: Theme.upload)
                     DetailRow(label: "Total ↓", value: Fmt.bytes(net.totalDownloaded), swatch: Theme.download)
                     DetailRow(label: "Total ↑", value: Fmt.bytes(net.totalUploaded), swatch: Theme.upload)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionLabel(text: "Connection")
                     DetailRow(label: "Interface", value: net.interface ?? "—")
                     DetailRow(label: "Local IP", value: localIP ?? "—")
                     if prefs.showConnectivity {
@@ -253,4 +291,15 @@ struct NetworkPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+// MARK: - History stats
+
+/// Lightweight summary stats over a metric's in-memory history series.
+extension Array where Element == Double {
+    /// Largest observed value (0 when empty).
+    var peak: Double { self.max() ?? 0 }
+
+    /// Arithmetic mean (0 when empty).
+    var mean: Double { isEmpty ? 0 : reduce(0, +) / Double(count) }
 }

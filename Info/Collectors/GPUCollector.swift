@@ -35,7 +35,9 @@ final class GPUCollector {
                 name: name(for: current),
                 utilization: clamp01(Double(utilPercent) / 100),
                 renderUtilization: intValue(perf["Renderer Utilization %"]).map { clamp01(Double($0) / 100) },
-                tilerUtilization: intValue(perf["Tiler Utilization %"]).map { clamp01(Double($0) / 100) }
+                tilerUtilization: intValue(perf["Tiler Utilization %"]).map { clamp01(Double($0) / 100) },
+                inUseMemory: uint64Value(perf["In use system memory"]),
+                allocatedMemory: uint64Value(perf["Alloc system memory"])
             )
 
             // Prefer the busiest accelerator (handles multi-GPU sensibly).
@@ -72,6 +74,13 @@ final class GPUCollector {
 
     private func intValue(_ any: Any?) -> Int? {
         (any as? NSNumber)?.intValue
+    }
+
+    /// Positive byte counts only; drivers report 0 (or omit the key) when a
+    /// memory statistic is unavailable, which we treat as "no data".
+    private func uint64Value(_ any: Any?) -> UInt64? {
+        guard let value = (any as? NSNumber)?.int64Value, value > 0 else { return nil }
+        return UInt64(value)
     }
 
     private func clamp01(_ v: Double) -> Double { min(1, max(0, v)) }

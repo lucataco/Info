@@ -126,7 +126,7 @@ final class MenuBarItemView: NSView {
 
         if style.showValue {
             if hasContent { x += style.spacing.labelGap }
-            drawValue(x: x, height: h)
+            drawValue(x: x, width: reservedValueWidth, height: h)
             x += reservedValueWidth
             hasContent = true
         }
@@ -171,7 +171,7 @@ final class MenuBarItemView: NSView {
         NSBezierPath(ovalIn: rect).fill()
     }
 
-    private func drawValue(x: CGFloat, height h: CGFloat) {
+    private func drawValue(x: CGFloat, width: CGFloat, height h: CGFloat) {
         guard !valueLines.isEmpty else { return }
         let attrs: [NSAttributedString.Key: Any] = [
             .font: valueFont,
@@ -182,7 +182,9 @@ final class MenuBarItemView: NSView {
         let total = lineHeight * CGFloat(valueLines.count)
         var y = (h + total) / 2 - lineHeight
         for line in valueLines {
-            NSAttributedString(string: line, attributes: attrs).draw(at: NSPoint(x: x, y: y))
+            let string = NSAttributedString(string: line, attributes: attrs)
+            let lineX = x + max(0, width - string.size().width)
+            string.draw(at: NSPoint(x: lineX, y: y))
             y -= lineHeight
         }
     }

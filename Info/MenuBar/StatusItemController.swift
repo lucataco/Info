@@ -196,11 +196,35 @@ final class StatusItemController {
         guard let window = button.window else { return }
         let rectInWindow = button.convert(button.bounds, to: nil)
         let anchor = window.convertToScreen(rectInWindow)
-        let screen = window.screen ?? NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSScreen.screens.first?.visibleFrame ?? .zero
-        panel.setFrameOrigin(Self.popoverOrigin(anchor: anchor,
-                                               size: panel.frame.size,
-                                               visible: visible))
+        let visible = Self.visibleFrame(containing: anchor, fallback: window.screen)
+        panel.setFrame(Self.popoverFrame(anchor: anchor,
+                                         size: panel.frame.size,
+                                         visible: visible),
+                       display: true)
+    }
+
+    private static func visibleFrame(containing anchor: NSRect, fallback: NSScreen?) -> NSRect {
+        let center = NSPoint(x: anchor.midX, y: anchor.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(center) }
+            ?? NSScreen.screens.first { $0.frame.intersects(anchor) }
+            ?? fallback
+            ?? NSScreen.main
+        return screen?.visibleFrame ?? fallback?.visibleFrame ?? .zero
+    }
+
+    nonisolated static func popoverFrame(anchor: NSRect,
+                                         size: NSSize,
+                                         visible: NSRect,
+                                         margin: CGFloat = 8,
+                                         gap: CGFloat = 6) -> NSRect {
+        let constrainedSize = NSSize(width: min(size.width, max(1, visible.width - margin * 2)),
+                                     height: min(size.height, max(1, visible.height - margin * 2)))
+        return NSRect(origin: popoverOrigin(anchor: anchor,
+                                           size: constrainedSize,
+                                           visible: visible,
+                                           margin: margin,
+                                           gap: gap),
+                      size: constrainedSize)
     }
 
     nonisolated static func popoverOrigin(anchor: NSRect,
@@ -209,12 +233,16 @@ final class StatusItemController {
                                           margin: CGFloat = 8,
                                           gap: CGFloat = 6) -> NSPoint {
         var x = anchor.midX - size.width / 2
-        x = min(max(x, visible.minX + margin), visible.maxX - size.width - margin)
+        let minX = visible.minX + margin
+        let maxX = max(minX, visible.maxX - size.width - margin)
+        x = min(max(x, minX), maxX)
 
         let belowY = anchor.minY - size.height - gap
         let aboveY = anchor.maxY + gap
         var y = belowY >= visible.minY + margin ? belowY : aboveY
-        y = min(max(y, visible.minY + margin), visible.maxY - size.height - margin)
+        let minY = visible.minY + margin
+        let maxY = max(minY, visible.maxY - size.height - margin)
+        y = min(max(y, minY), maxY)
 
         return NSPoint(x: x, y: y)
     }

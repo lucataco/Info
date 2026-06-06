@@ -277,6 +277,32 @@ import Foundation
                                                         visible: visible)
         #expect(origin.x == 692) // visible.maxX - width - margin
     }
+
+    @Test func popoverFrameStaysInsideNarrowScreen() {
+        let visible = NSRect(x: 1440, y: 0, width: 320, height: 240)
+        let anchor = NSRect(x: 1740, y: 240, width: 20, height: 22)
+        let frame = StatusItemController.popoverFrame(anchor: anchor,
+                                                      size: NSSize(width: 400, height: 300),
+                                                      visible: visible)
+        #expect(frame.minX >= visible.minX + 8)
+        #expect(frame.maxX <= visible.maxX - 8)
+        #expect(frame.minY >= visible.minY + 8)
+        #expect(frame.maxY <= visible.maxY - 8)
+    }
+}
+
+@Suite struct HistoryStatsTests {
+    @Test func peakAndMeanOverSeries() {
+        let series = [0.2, 0.5, 0.8, 0.1]
+        #expect(series.peak == 0.8)
+        #expect(abs(series.mean - 0.4) < 0.0001)
+    }
+
+    @Test func emptySeriesIsZero() {
+        let empty: [Double] = []
+        #expect(empty.peak == 0)
+        #expect(empty.mean == 0)
+    }
 }
 
 @Suite struct MemorySampleTests {
