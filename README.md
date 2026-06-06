@@ -8,7 +8,14 @@ Info is a lightweight macOS 26 menu bar system monitor for CPU, GPU, memory, and
 brew install --cask lucataco/tap/info
 ```
 
-Info is ad-hoc signed, so the cask strips the quarantine attribute on install.
+Then launch it:
+
+```sh
+open -a Info
+```
+
+Info is a menu-bar-only app, so it appears in the macOS menu bar rather than the
+Dock. It is ad-hoc signed, so the cask strips the quarantine attribute on install.
 
 ## Features
 
