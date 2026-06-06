@@ -267,16 +267,17 @@ private struct MetricChooserRow: View {
         switch kind {
         case .network:
             DualHistoryChart(download: state.netDownHistory.values,
-                             upload: state.netUpHistory.values, height: 30)
+                             upload: state.netUpHistory.values, height: 30, showsDetail: false)
         case .cpu:
             HistoryChart(values: state.cpuHistory.values,
-                         tint: Theme.usage(state.cpu?.total ?? 0), height: 30)
+                         tint: Theme.usage(state.cpu?.total ?? 0), height: 30, showsDetail: false)
         case .gpu:
             HistoryChart(values: state.gpuHistory.values,
-                         tint: Theme.usage(state.gpu?.utilization ?? 0), height: 30)
+                         tint: Theme.usage(state.gpu?.utilization ?? 0), height: 30, showsDetail: false)
         case .memory:
             HistoryChart(values: state.memoryHistory.values,
-                         tint: state.memory.map { Theme.pressure($0.pressure) } ?? .blue, height: 30)
+                         tint: state.memory.map { Theme.pressure($0.pressure) } ?? .blue,
+                         height: 30, showsDetail: false)
         }
     }
 }

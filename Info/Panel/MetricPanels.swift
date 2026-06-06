@@ -15,7 +15,7 @@ struct MetricPanel: View {
             switch kind {
             case .cpu: CPUPanel(state: state, prefs: prefs)
             case .gpu: GPUPanel(state: state, prefs: prefs)
-            case .memory: MemoryPanel(state: state)
+            case .memory: MemoryPanel(state: state, prefs: prefs)
             case .network: NetworkPanel(state: state, prefs: prefs)
             }
         }
@@ -60,7 +60,9 @@ struct CPUPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             PanelHeader(title: "CPU", symbol: "cpu", fraction: cpu?.total ?? 0)
 
-            HistoryChart(values: state.cpuHistory.values, tint: Theme.usage(cpu?.total ?? 0))
+            HistoryChart(values: state.cpuHistory.values,
+                         tint: Theme.usage(cpu?.total ?? 0),
+                         secondsPerSample: prefs.updateInterval)
 
             if let cpu, !cpu.perCore.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -97,6 +99,7 @@ struct CPUPanel: View {
 
 struct MemoryPanel: View {
     @Bindable var state: SamplingState
+    let prefs: Preferences
     @State private var processes = TopProcessesModel(kind: .memory)
 
     var body: some View {
@@ -111,7 +114,8 @@ struct MemoryPanel: View {
                         .font(.caption).foregroundStyle(.secondary)))
 
             HistoryChart(values: state.memoryHistory.values,
-                         tint: mem.map { Theme.pressure($0.pressure) } ?? .blue)
+                         tint: mem.map { Theme.pressure($0.pressure) } ?? .blue,
+                         secondsPerSample: prefs.updateInterval)
 
             if let mem {
                 StackedBar(segments: [
@@ -172,7 +176,9 @@ struct GPUPanel: View {
                         .lineLimit(1)
                         .truncationMode(.middle)))
 
-            HistoryChart(values: history, tint: Theme.usage(gpu?.utilization ?? 0))
+            HistoryChart(values: history,
+                         tint: Theme.usage(gpu?.utilization ?? 0),
+                         secondsPerSample: prefs.updateInterval)
 
             if let gpu {
                 VStack(alignment: .leading, spacing: 6) {
@@ -246,7 +252,8 @@ struct NetworkPanel: View {
                         value: net.map { Fmt.rate($0.uploadBytesPerSec) } ?? "—")
             }
 
-            DualHistoryChart(download: downHistory, upload: upHistory)
+            DualHistoryChart(download: downHistory, upload: upHistory,
+                             secondsPerSample: prefs.updateInterval)
 
             if let net {
                 VStack(alignment: .leading, spacing: 6) {
