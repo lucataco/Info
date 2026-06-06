@@ -2,6 +2,10 @@ import SwiftUI
 
 /// Routes a `MetricKind` to its detail panel. Hosted in the status-item popover.
 struct MetricPanel: View {
+    static let contentWidth: CGFloat = 300
+    static let padding: CGFloat = 16
+    static var panelWidth: CGFloat { contentWidth + padding * 2 }
+
     let kind: MetricKind
     @Bindable var state: SamplingState
     let prefs: Preferences
@@ -15,8 +19,8 @@ struct MetricPanel: View {
             case .network: NetworkPanel(state: state, prefs: prefs)
             }
         }
-        .frame(width: 300)
-        .padding(16)
+        .frame(width: Self.contentWidth)
+        .padding(Self.padding)
     }
 }
 

@@ -169,7 +169,7 @@ final class StatusItemController {
 
         let hosting = NSHostingController(rootView: MetricPanel(kind: bar.kind, state: state, prefs: prefs))
         let fitting = hosting.view.fittingSize
-        let size = NSSize(width: max(300, fitting.width),
+        let size = NSSize(width: MetricPanel.panelWidth,
                           height: min(520, max(180, fitting.height)))
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.titled, .fullSizeContentView],

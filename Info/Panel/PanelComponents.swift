@@ -113,10 +113,17 @@ struct DetailRow: View {
             if let swatch {
                 Circle().fill(swatch).frame(width: 7, height: 7)
             }
-            Text(label).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(value).monospacedDigit()
+            Text(label)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(value)
+                .monospacedDigit()
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity)
         .font(.callout)
     }
 }
