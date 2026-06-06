@@ -1,0 +1,67 @@
+name: Info
+options:
+  bundleIdPrefix: com.info
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_ALLOWED: "YES"
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS: "NO"
+    ENABLE_HARDENED_RUNTIME: "YES"
+    DEAD_CODE_STRIPPING: "YES"
+    GCC_WARN_UNINITIALIZED_AUTOS: "YES"
+    CLANG_WARN_DOCUMENTATION_COMMENTS: "NO"
+
+targets:
+  Info:
+    type: application
+    platform: macOS
+    sources:
+      - path: Info
+        excludes:
+          - "Resources/Info.plist"
+    settings:
+      base:
+        INFOPLIST_FILE: Info/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.info.app
+        PRODUCT_NAME: Info
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: "YES"
+        COMBINE_HIDPI_IMAGES: "YES"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+
+  InfoTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: Info
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.info.app.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+
+schemes:
+  Info:
+    build:
+      targets:
+        Info: all
+    run:
+      config: Debug
+    test:
+      targets:
+        - InfoTests
