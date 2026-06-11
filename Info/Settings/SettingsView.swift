@@ -7,6 +7,7 @@ struct SettingsView: View {
     var onMetricsChanged: () -> Void
     var onIntervalChanged: () -> Void
     var onStyleChanged: () -> Void
+    var onAppearanceChanged: () -> Void
 
     var body: some View {
         TabView {
@@ -16,7 +17,9 @@ struct SettingsView: View {
             MenuBarTab(prefs: prefs, onStyleChanged: onStyleChanged)
                 .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
 
-            GeneralTab(prefs: prefs, onIntervalChanged: onIntervalChanged)
+            GeneralTab(prefs: prefs,
+                       onIntervalChanged: onIntervalChanged,
+                       onAppearanceChanged: onAppearanceChanged)
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
         .frame(width: 440, height: 480)
@@ -139,11 +142,24 @@ private struct MenuBarTab: View {
 private struct GeneralTab: View {
     @Bindable var prefs: Preferences
     var onIntervalChanged: () -> Void
+    var onAppearanceChanged: () -> Void
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var requiresLoginApproval = LaunchAtLogin.requiresApproval
 
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Theme", selection: Binding(
+                    get: { prefs.appearance },
+                    set: { prefs.appearance = $0; onAppearanceChanged() }
+                )) {
+                    ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Text("System follows your macOS light or dark setting.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Startup") {
                 Toggle("Launch Info at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, on in

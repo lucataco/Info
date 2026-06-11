@@ -21,6 +21,7 @@ final class Preferences {
         static let menuBarTextSize = "menuBarTextSize"
         static let menuBarSpacing = "menuBarSpacing"
         static let menuBarLayout = "menuBarLayout"
+        static let appearance = "appearance"
     }
 
     /// Which metrics appear in the menu bar, in canonical order.
@@ -36,6 +37,9 @@ final class Preferences {
 
     /// Whether the first-run onboarding has completed.
     var didOnboard: Bool { didSet { defaults.set(didOnboard, forKey: Keys.didOnboard) } }
+
+    /// App appearance: follow the system (default), or force light/dark.
+    var appearance: AppearanceMode { didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) } }
 
     // Menu bar appearance.
     var showMenuBarSparkline: Bool { didSet { defaults.set(showMenuBarSparkline, forKey: Keys.menuBarSparkline) } }
@@ -70,6 +74,9 @@ final class Preferences {
         showPublicIP = defaults.bool(forKey: Keys.publicIP)
         showConnectivity = defaults.bool(forKey: Keys.connectivity)
         didOnboard = defaults.bool(forKey: Keys.didOnboard)
+
+        // Default to following the system light/dark setting.
+        appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
 
         // Default sparkline OFF. Wide graph items can collide with macOS's
         // hidden/overflow chevron on crowded menu bars, so graphs are opt-in.

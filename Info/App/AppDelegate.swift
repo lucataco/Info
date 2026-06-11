@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.info("Info launched (pid \(ProcessInfo.processInfo.processIdentifier))")
 
         let prefs = Preferences()
+        prefs.appearance.apply()
         let state = SamplingState()
         let controller = StatusItemController()
         controller.onOpenSettings = { [weak self] in self?.showSettings() }
@@ -142,6 +143,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onStyleChanged: { [weak self] in
                     guard let self, let prefs = self.prefs else { return }
                     self.statusController?.setStyle(prefs.menuBarStyle)
+                },
+                onAppearanceChanged: { [weak self] in
+                    self?.prefs?.appearance.apply()
                 }
             )
         }
