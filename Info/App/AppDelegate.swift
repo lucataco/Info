@@ -28,11 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let cpu = smc.averageTemperature(keys: SMCConnection.cpuKeys)
                 let gpu = smc.averageTemperature(keys: SMCConnection.gpuKeys)
                 smc.close()
-                NSLog("TEMP cpu=%@ gpu=%@",
-                      cpu.map { String(format: "%.1f", $0) } ?? "nil",
-                      gpu.map { String(format: "%.1f", $0) } ?? "nil")
+                Log.app.info("TEMP cpu=\(cpu.map { String(format: "%.1f", $0) } ?? "nil", privacy: .public) gpu=\(gpu.map { String(format: "%.1f", $0) } ?? "nil", privacy: .public)")
             } else {
-                NSLog("TEMP smc-open-failed")
+                Log.app.info("TEMP smc-open-failed")
             }
             exit(0)
         }
@@ -40,8 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task {
                 let ip = await PublicIP.fetch()
                 let latency = await Connectivity.latencyMs()
-                NSLog("NET ip=%@ latency=%@", ip ?? "nil",
-                      latency.map { String(format: "%.0fms", $0) } ?? "nil")
+                Log.app.info("NET ip=\(ip ?? "nil", privacy: .public) latency=\(latency.map { String(format: "%.0fms", $0) } ?? "nil", privacy: .public)")
                 exit(0)
             }
             return

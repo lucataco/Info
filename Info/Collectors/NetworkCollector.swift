@@ -69,16 +69,16 @@ final class NetworkCollector {
         if store == nil {
             store = SCDynamicStoreCreate(nil, "com.info.app" as CFString, nil, nil)
         }
-        guard let store,
-              let dict = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
-              let interface = dict["PrimaryInterface"] as? String
-        else {
-            guard let store,
-                  let dict = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv6" as CFString) as? [String: Any]
-            else { return nil }
-            return dict["PrimaryInterface"] as? String
+        guard let store else { return nil }
+
+        // Prefer the IPv4 primary interface; fall back to IPv6.
+        for key in ["State:/Network/Global/IPv4", "State:/Network/Global/IPv6"] as [CFString] {
+            if let dict = SCDynamicStoreCopyValue(store, key) as? [String: Any],
+               let interface = dict["PrimaryInterface"] as? String {
+                return interface
+            }
         }
-        return interface
+        return nil
     }
 
     /// Sum tx/rx bytes. If `interface` is known, only that one; otherwise all

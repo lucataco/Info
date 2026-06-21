@@ -335,3 +335,149 @@ import Foundation
         #expect(s.usage == 0.0)
     }
 }
+
+// MARK: - MetricsEngine lifecycle
+
+@MainActor
+final class SnapshotRecorder {
+    private(set) var snapshots: [MetricsSnapshot] = []
+    var count: Int { snapshots.count }
+    func record(_ snapshot: MetricsSnapshot) { snapshots.append(snapshot) }
+}
+
+@Suite struct MetricsEngineTests {
+    private func makeCollectors() -> MetricCollectors {
+        MetricCollectors(
+            cpu: { CPUSample(total: 0.5, system: 0.2, user: 0.3, idle: 0.5, perCore: []) },
+            gpu: { GPUSample(name: "Test GPU", utilization: 0.3) },
+            memory: { MemorySample(total: 1_000_000_000, used: 500_000_000, free: 500_000_000,
+                                   app: 200_000_000, wired: 100_000_000, compressed: 50_000_000,
+                                   cached: 150_000_000, pressure: .normal, swapTotal: 0, swapUsed: 0) },
+            network: { NetworkSample(interface: "en0", uploadBytesPerSec: 100, downloadBytesPerSec: 200,
+                                     totalUploaded: 1000, totalDownloaded: 2000) }
+        )
+    }
+
+    @Test @MainActor func startPublishesSnapshots() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(450))
+        engine.stop()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(recorder.count >= 2)
+    }
+
+    @Test @MainActor func stopHaltsPublishing() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(350))
+        engine.stop()
+        try await Task.sleep(for: .milliseconds(100))
+        let countAfterStop = recorder.count
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(recorder.count == countAfterStop)
+        #expect(countAfterStop >= 1)
+    }
+
+    @Test @MainActor func pauseStopsAndResumeRestoresPublishing() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recorder.count >= 1)
+
+        engine.setPaused(true)
+        try await Task.sleep(for: .milliseconds(100))
+        let countWhilePaused = recorder.count
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(recorder.count == countWhilePaused)
+
+        engine.setPaused(false)
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(recorder.count > countWhilePaused)
+        engine.stop()
+    }
+
+    @Test @MainActor func emptyEnabledMetricsDoesNotPublish() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(recorder.count == 0)
+        engine.stop()
+    }
+
+    @Test @MainActor func disablingAllMetricsStopsPublishing() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recorder.count >= 1)
+
+        engine.setEnabledMetrics([])
+        try await Task.sleep(for: .milliseconds(100))
+        let countAfterDisable = recorder.count
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(recorder.count == countAfterDisable)
+        engine.stop()
+    }
+
+    @Test @MainActor func setIntervalChangesCadence() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.5, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(recorder.count == 0)
+
+        engine.setInterval(0.05)
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(recorder.count >= 2)
+        engine.stop()
+    }
+
+    @Test @MainActor func onlyEnabledMetricsArePublished() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(350))
+        engine.stop()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(!recorder.snapshots.isEmpty)
+        #expect(recorder.snapshots.allSatisfy { $0.cpu != nil })
+        #expect(recorder.snapshots.allSatisfy { $0.gpu == nil })
+    }
+
+    @Test @MainActor func reEnablingMetricsResumesPublishing() async throws {
+        let recorder = SnapshotRecorder()
+        let engine = MetricsEngine(interval: 0.1, enabledMetrics: [.cpu], collectors: makeCollectors()) {
+            recorder.record($0)
+        }
+        engine.start()
+        try await Task.sleep(for: .milliseconds(350))
+        let countAfterFirstRun = recorder.count
+        #expect(countAfterFirstRun >= 1)
+
+        engine.setEnabledMetrics([])
+        try await Task.sleep(for: .milliseconds(300))
+        engine.setEnabledMetrics([.cpu])
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(recorder.count > countAfterFirstRun)
+        engine.stop()
+    }
+}

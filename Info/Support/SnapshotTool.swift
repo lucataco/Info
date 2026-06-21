@@ -39,7 +39,7 @@ enum SnapshotTool {
                   let rep = NSBitmapImageRep(data: tiff),
                   let data = rep.representation(using: .png, properties: [:]) else { continue }
             try? data.write(to: URL(fileURLWithPath: base + "_step\(step).png"))
-            NSLog("onboarding snapshot wrote step %d", step)
+            Log.app.debug("onboarding snapshot wrote step \(step)")
         }
     }
 
@@ -96,7 +96,7 @@ enum SnapshotTool {
               let rep = NSBitmapImageRep(data: tiff),
               let data = rep.representation(using: .png, properties: [:]) else { return }
         try? data.write(to: URL(fileURLWithPath: path))
-        NSLog("panel snapshot wrote %@ (%dx%d)", path, Int(image.size.width), Int(image.size.height))
+        Log.app.debug("panel snapshot wrote \(path, privacy: .public) (\(Int(image.size.width))x\(Int(image.size.height)))")
     }
 
     private final class Backdrop: NSView {
@@ -158,7 +158,7 @@ enum SnapshotTool {
         }
         if let data = rep.representation(using: .png, properties: [:]) {
             try? data.write(to: URL(fileURLWithPath: path))
-            NSLog("snapshot wrote %@ (%dx%d pts)", path, Int(totalW), Int(thickness))
+            Log.app.debug("snapshot wrote \(path, privacy: .public) (\(Int(totalW))x\(Int(thickness)) pts)")
         }
     }
 }

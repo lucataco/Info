@@ -9,6 +9,8 @@
 #   make run      build + launch
 #   make zip      build + zip Info.app for distribution
 #   make release  cut a GitHub release + update the Homebrew tap
+#   make test     run unit tests
+#   make lint     run SwiftLint (install: brew install swiftlint)
 #   make clean    remove build artifacts
 #
 # For distribution to other Macs, sign with a Developer ID and notarize:
@@ -33,7 +35,7 @@ NOTARY_PROFILE ?=
 
 XCODE_SIGNING = CODE_SIGN_STYLE="$(CODE_SIGN_STYLE)" CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)"
 
-.PHONY: all generate icon build dmg zip release verify notarize run test clean
+.PHONY: all generate icon build dmg zip release verify notarize run test lint clean
 
 all: dmg
 
@@ -86,6 +88,13 @@ run: build
 test: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
 		-destination 'platform=macOS' test
+
+lint:
+	@if ! command -v swiftlint >/dev/null 2>&1; then \
+		echo "SwiftLint is not installed. Install with: brew install swiftlint"; \
+		exit 1; \
+	fi
+	swiftlint lint --config .swiftlint.yml
 
 clean:
 	rm -rf $(BUILD_DIR)

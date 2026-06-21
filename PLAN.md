@@ -36,7 +36,8 @@ Target: **macOS 26 (Tahoe)**, Apple Silicon, Xcode 26.5 / Swift 6.3 (Swift 6 lan
 
 ```
         +----------------------------------------------+
-        |  MetricsEngine (actor)                       |
+        |  MetricsEngine (@unchecked Sendable,         |
+        |  serial-queue-confined)                      |
         |  - ONE DispatchSourceTimer (.utility, leeway)|
         |  - tick -> CPU, GPU, RAM, Net collectors     |
         |  - in-memory ring buffers (history)          |
@@ -61,9 +62,7 @@ Target: **macOS 26 (Tahoe)**, Apple Silicon, Xcode 26.5 / Swift 6.3 (Swift 6 lan
 every tick to LevelDB. Info runs **one shared timer** that samples all four cheap metrics
 in sequence and keeps history **only in RAM**. Heavy/optional probes (SMC temperature,
 public IP, connectivity latency) run on a **separate slow cadence and only while their
-panel is open**.
-
-## 4. Collectors (lean, no hot-path logging)
+panel is open**.## 4. Collectors (lean, no hot-path logging)
 
 Pure `Sendable` snapshots; each guards every system call and returns last-good on failure:
 
@@ -73,10 +72,10 @@ Pure `Sendable` snapshots; each guards every system call and returns last-good o
 - **`NetworkCollector`** — `getifaddrs` byte counters (delta/sec), primary interface via `SCDynamicStore`.
 
 **Opt-in / power-gated:**
-- **`SMCTemperatureCollector`** — minimal self-contained SMC client. Default OFF; when on, sampled at a slow 5 s cadence only while a panel is open. Only piece that touches the SMC.
-- **`PublicIPProvider`** — on-demand only when the Network panel opens, then cached; endpoint user-configurable; default OFF. No hardcoded third-party/author server.
-- **`ConnectivityProbe`** — latency probe only while the Network panel is open, slow cadence; default OFF.
-- **Top processes (CPU/RAM)** — shell out to `ps`/`top` only while the panel is open.
+- **`SMCConnection` + `TemperatureModel`** — minimal self-contained SMC client (`SMC.swift`). Default OFF; when on, sampled at a slow 5 s cadence only while a panel is open. Only piece that touches the SMC.
+- **`PublicIP`** (in `NetworkExtras.swift`) — on-demand only when the Network panel opens, then cached; endpoint user-configurable; default OFF. No hardcoded third-party/author server.
+- **`Connectivity`** (in `NetworkExtras.swift`) — latency probe only while the Network panel is open, slow cadence; default OFF.
+- **Top processes (CPU/RAM)** — shell out to `ps` only while the panel is open.
 
 ## 5. Menu bar rendering (sparklines)
 
@@ -114,7 +113,7 @@ Short SwiftUI flow on first run (engine already sampling, so previews are live):
 
 - `os.Logger` subsystem `com.info.app`, categories per collector; debug/trace for samples, error only for real faults, rate-limited.
 - `OSSignposter` around each sampling tick for Instruments.
-- Swift 6 strict concurrency: `MetricsEngine` is an `actor`; UI state is `@MainActor`; snapshots `Sendable`.
+- Swift 6 strict concurrency: `MetricsEngine` is a `final class` marked `@unchecked Sendable`, with all mutable state confined to a private serial `DispatchQueue` (the comment in `MetricsEngine.swift` explains the deviation from a plain `actor`); UI state is `@MainActor`; snapshots are `Sendable`.
 - Zero force-unwraps on system data; every `kern_return_t`/`sysctl` checked.
 
 ## 10. Power & correctness safeguards
@@ -122,27 +121,29 @@ Short SwiftUI flow on first run (engine already sampling, so previews are live):
 - Single coalesced `DispatchSourceTimer`, `.utility` QoS, leeway = 10-20% of interval.
 - Pause sampling on: `NSWorkspace.willSleep`, screen lock, all items hidden, app occluded. Resume on wake/visibility.
 - No auto-update/cloud in v1.
-- App Nap friendly.
+- `NSSupportsAutomaticTermination=false` (in `Info.plist`) — an always-on agent app must not be auto-terminated by the system despite having no windows. Power savings come instead from the coalesced timer, utility QoS, and sleep/lock pause above.
 
 ## 11. Project structure
 
 ```
 Info/
   project.yml                 # XcodeGen spec
+  Makefile                    # build / dmg / notarize / release targets
   Info/
-    App/ InfoApp.swift, AppDelegate.swift
-    Engine/ MetricsEngine.swift, RingBuffer.swift, SamplingState.swift
+    App/ InfoApp.swift, AppDelegate.swift, WindowManager.swift
+    Engine/ MetricsEngine.swift, MetricsSnapshot.swift, RingBuffer.swift, SamplingState.swift
     Collectors/ CPUCollector.swift, GPUCollector.swift,
-                MemoryCollector.swift, NetworkCollector.swift,
-                SMCTemperatureCollector.swift, PublicIPProvider.swift,
-                ConnectivityProbe.swift, TopProcesses.swift
-    MenuBar/ StatusItemController.swift, MenuBarItemView.swift, MenuBarStyle.swift
-    Panel/ CPUPanel.swift, MemoryPanel.swift, GPUPanel.swift, NetworkPanel.swift
+                MemoryCollector.swift, NetworkCollector.swift, NetworkInfo.swift,
+                NetworkExtras.swift, SMC.swift, TemperatureModel.swift,
+                TopProcesses.swift
+    MenuBar/ StatusItemController.swift, MenuBarItemView.swift, MenuBarStyle.swift, MetricKind.swift
+    Panel/ MetricPanels.swift, PanelComponents.swift
     Settings/ SettingsView.swift, Preferences.swift
     Onboarding/ OnboardingView.swift, MenuBarVisibility.swift
-    Support/ Logging.swift, LaunchAtLogin.swift, PowerGate.swift
+    Support/ Logging.swift, Formatting.swift, Appearance.swift, LaunchAtLogin.swift, PowerGate.swift, SnapshotTool.swift
     Resources/ Info.plist, Assets.xcassets
-  Tests/ CollectorsTests.swift
+  Tests/ SmokeTests.swift
+  tools/ make-icon.swift, package-dmg.sh, release.sh, Info.icns
 ```
 
 ## 12. Implementation phases (each with a verification gate)
