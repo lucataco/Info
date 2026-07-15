@@ -1,5 +1,51 @@
 import AppKit
 
+/// Everything a `MenuBarItemView` needs to draw one refresh of a metric.
+/// Shared between the real status items and the Settings live preview so the
+/// two can never drift apart.
+struct MenuBarItemData: Equatable, Sendable {
+    var single: [Double] = []
+    var download: [Double] = []
+    var upload: [Double] = []
+    var lines: [String] = []
+
+    /// Builds the current display data for `kind` from live sampling state.
+    @MainActor
+    static func current(for kind: MetricKind, state: SamplingState) -> MenuBarItemData {
+        switch kind {
+        case .cpu:
+            return MenuBarItemData(
+                single: state.cpuHistory.values,
+                lines: [state.cpu.map { Fmt.percent($0.total) } ?? "—"])
+        case .gpu:
+            return MenuBarItemData(
+                single: state.gpuHistory.values,
+                lines: [state.gpu.map { Fmt.percent($0.utilization) } ?? "—"])
+        case .memory:
+            return MenuBarItemData(
+                single: state.memoryHistory.values,
+                lines: [state.memory.map { Fmt.percent($0.usage) } ?? "—"])
+        case .network:
+            let down = state.network.map { Fmt.rateShort($0.downloadBytesPerSec) } ?? "—"
+            let upRate = state.network.map { Fmt.rateShort($0.uploadBytesPerSec) } ?? "—"
+            return MenuBarItemData(
+                download: state.netDownHistory.values,
+                upload: state.netUpHistory.values,
+                lines: ["\u{2193}\(down)", "\u{2191}\(upRate)"])
+        }
+    }
+
+    /// VoiceOver-friendly reading of the current value(s), e.g. "23%" or
+    /// "down 1.5M, up 240K".
+    var accessibilityValue: String {
+        guard !lines.isEmpty else { return "—" }
+        return lines
+            .map { $0.replacingOccurrences(of: "\u{2193}", with: "down ")
+                     .replacingOccurrences(of: "\u{2191}", with: "up ") }
+            .joined(separator: ", ")
+    }
+}
+
 /// One metric's view inside a status-item button. Lays out tightly as
 /// `[label/icon] value [sparkline?]` — no big gaps. The label style, text size,
 /// and whether the sparkline shows are all configurable. The value occupies a
@@ -36,6 +82,15 @@ final class MenuBarItemView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     // MARK: - Updates (redraw-on-change only)
+
+    /// Routes a refresh to the right drawing path for this metric.
+    func apply(_ data: MenuBarItemData) {
+        if kind.isMirrored {
+            updateMirrored(download: data.download, upload: data.upload, lines: data.lines)
+        } else {
+            updateSingle(history: data.single, value: data.lines.first ?? "—")
+        }
+    }
 
     func updateSingle(history: [Double], value: String) {
         let lines = [value]

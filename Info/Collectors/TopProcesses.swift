@@ -14,6 +14,9 @@ struct ProcRow: Identifiable, Sendable, Equatable {
 @Observable
 final class TopProcessesModel {
     var rows: [ProcRow] = []
+    /// True once the first `ps` attempt has finished — distinguishes "still
+    /// loading" from "`ps` returned nothing / failed" in the UI.
+    var loaded = false
     private var task: Task<Void, Never>?
     private let kind: MetricKind
 
@@ -29,6 +32,7 @@ final class TopProcessesModel {
                 let rows = await Self.fetch(kind: kind)
                 if Task.isCancelled { return }
                 self?.rows = rows
+                self?.loaded = true
                 try? await Task.sleep(for: .seconds(2))
             }
         }

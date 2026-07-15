@@ -24,6 +24,7 @@ final class StatusItemController {
     private var fallbackItem: NSStatusItem?
     private var popoverWindow: NSPanel?
     private var popoverKind: MetricKind?
+    private var popoverPinned = false
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var popoverNotificationTokens: [NSObjectProtocol] = []
@@ -46,27 +47,37 @@ final class StatusItemController {
         }
 
         for kind in metrics {
-            let view = MenuBarItemView(kind: kind, style: style)
-            let item = NSStatusBar.system.statusItem(withLength: view.preferredWidth())
-            guard let button = item.button else {
-                NSStatusBar.system.removeStatusItem(item)
-                continue
+            if let bar = makeBar(kind: kind, style: style) {
+                bars.append(bar)
             }
-            button.toolTip = kind.title
-
-            view.frame = button.bounds
-            view.autoresizingMask = [.width, .height]
-            button.addSubview(view)
-
-            button.target = self
-            button.action = #selector(handleClick(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-
-            bars.append(Bar(kind: kind, item: item, view: view))
         }
 
         refresh()
         Log.menubar.info("Installed \(self.bars.count) status item(s)")
+    }
+
+    /// Creates one status item for `kind`. Positions persist per metric via
+    /// `autosaveName`, so toggling a metric off and on keeps its spot.
+    private func makeBar(kind: MetricKind, style: MenuBarStyle) -> Bar? {
+        let view = MenuBarItemView(kind: kind, style: style)
+        let item = NSStatusBar.system.statusItem(withLength: view.preferredWidth())
+        guard let button = item.button else {
+            NSStatusBar.system.removeStatusItem(item)
+            return nil
+        }
+        item.autosaveName = "Info.\(kind.rawValue)"
+        button.toolTip = kind.title
+        button.setAccessibilityLabel(kind.title)
+
+        view.frame = button.bounds
+        view.autoresizingMask = [.width, .height]
+        button.addSubview(view)
+
+        button.target = self
+        button.action = #selector(handleClick(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+
+        return Bar(kind: kind, item: item, view: view)
     }
 
     private func installFallbackItem() {
@@ -95,36 +106,48 @@ final class StatusItemController {
     func refresh() {
         guard let state else { return }
         for bar in bars {
-            switch bar.kind {
-            case .cpu:
-                bar.view.updateSingle(
-                    history: state.cpuHistory.values,
-                    value: state.cpu.map { Fmt.percent($0.total) } ?? "—")
-            case .gpu:
-                bar.view.updateSingle(
-                    history: state.gpuHistory.values,
-                    value: state.gpu.map { Fmt.percent($0.utilization) } ?? "—")
-            case .memory:
-                bar.view.updateSingle(
-                    history: state.memoryHistory.values,
-                    value: state.memory.map { Fmt.percent($0.usage) } ?? "—")
-            case .network:
-                let down = state.network.map { Fmt.rateShort($0.downloadBytesPerSec) } ?? "—"
-                let up = state.network.map { Fmt.rateShort($0.uploadBytesPerSec) } ?? "—"
-                bar.view.updateMirrored(
-                    download: state.netDownHistory.values,
-                    upload: state.netUpHistory.values,
-                    lines: ["\u{2193}\(down)", "\u{2191}\(up)"])
-            }
+            let data = MenuBarItemData.current(for: bar.kind, state: state)
+            bar.view.apply(data)
+            // Expose the live value to VoiceOver — the item is custom-drawn, so
+            // the button itself must carry it.
+            bar.item.button?.setAccessibilityValue(data.accessibilityValue)
         }
     }
 
-    /// Rebuild the menu-bar items for a new set of enabled metrics.
+    /// Applies a new set of enabled metrics by diffing against the current
+    /// items: survivors are kept in place (no flicker, popover stays open),
+    /// removed metrics disappear, and new ones are created.
     func setMetrics(_ metrics: [MetricKind]) {
-        guard let state, let prefs else { return }
-        closePopover()
-        tearDown()
-        install(state: state, prefs: prefs, metrics: metrics)
+        guard let prefs, state != nil else { return }
+
+        if let popoverKind, !metrics.contains(popoverKind) {
+            closePopover()
+        }
+
+        for bar in bars where !metrics.contains(bar.kind) {
+            NSStatusBar.system.removeStatusItem(bar.item)
+        }
+        bars.removeAll { !metrics.contains($0.kind) }
+
+        let existing = Set(bars.map(\.kind))
+        for kind in metrics where !existing.contains(kind) {
+            if let bar = makeBar(kind: kind, style: prefs.menuBarStyle) {
+                bars.append(bar)
+            }
+        }
+        bars.sort {
+            (MetricKind.allCases.firstIndex(of: $0.kind) ?? 0)
+                < (MetricKind.allCases.firstIndex(of: $1.kind) ?? 0)
+        }
+
+        if metrics.isEmpty {
+            if fallbackItem == nil { installFallbackItem() }
+        } else if let fallbackItem {
+            NSStatusBar.system.removeStatusItem(fallbackItem)
+            self.fallbackItem = nil
+        }
+
+        refresh()
     }
 
     func tearDown() {
@@ -167,7 +190,16 @@ final class StatusItemController {
         guard let state, let prefs else { return }
         closePopover()
 
-        let hosting = NSHostingController(rootView: MetricPanel(kind: bar.kind, state: state, prefs: prefs))
+        let panelView = MetricPanel(
+            kind: bar.kind, state: state, prefs: prefs,
+            onOpenSettings: { [weak self] in
+                self?.closePopover()
+                self?.onOpenSettings?()
+            },
+            onPinChanged: { [weak self] pinned in
+                self?.popoverPinned = pinned
+            })
+        let hosting = NSHostingController(rootView: panelView)
         let fitting = hosting.sizeThatFits(in: NSSize(width: MetricPanel.panelWidth,
                                                       height: .greatestFiniteMagnitude))
         let size = Self.popoverSize(fitting: fitting, width: MetricPanel.panelWidth)
@@ -222,7 +254,7 @@ final class StatusItemController {
     nonisolated static func popoverSize(fitting: NSSize,
                                         width: CGFloat,
                                         minHeight: CGFloat = 300,
-                                        maxHeight: CGFloat = 520) -> NSSize {
+                                        maxHeight: CGFloat = 560) -> NSSize {
         let measuredHeight = fitting.height.isFinite ? fitting.height : 0
         return NSSize(width: width, height: min(maxHeight, max(minHeight, measuredHeight)))
     }
@@ -292,6 +324,7 @@ final class StatusItemController {
         popoverWindow?.close()
         popoverWindow = nil
         popoverKind = nil
+        popoverPinned = false
         removeDismissMonitors()
         removePopoverNotifications()
     }
@@ -303,13 +336,13 @@ final class StatusItemController {
             forName: NSWindow.didResignKeyNotification,
             object: panel,
             queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.closePopover() }
+            MainActor.assumeIsolated { self?.closePopoverUnlessPinned() }
         })
         popoverNotificationTokens.append(center.addObserver(
             forName: NSApplication.didResignActiveNotification,
             object: NSApp,
             queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.closePopover() }
+            MainActor.assumeIsolated { self?.closePopoverUnlessPinned() }
         })
     }
 
@@ -331,13 +364,20 @@ final class StatusItemController {
                 return event
             }
             if let panel = self.popoverWindow, event.window !== panel {
-                self.closePopover()
+                self.closePopoverUnlessPinned()
             }
             return event
         }
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            DispatchQueue.main.async { self?.closePopover() }
+            DispatchQueue.main.async { self?.closePopoverUnlessPinned() }
         }
+    }
+
+    /// Outside clicks and focus loss only dismiss an unpinned popover. Escape,
+    /// clicking the status item again, and disabling the metric always close.
+    private func closePopoverUnlessPinned() {
+        guard !popoverPinned else { return }
+        closePopover()
     }
 
     private func removeDismissMonitors() {

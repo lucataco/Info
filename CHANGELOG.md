@@ -6,6 +6,36 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-15
+
+### Added
+- Panel footer with a Settings shortcut and a pin button — pinned panels stay
+  open while you click elsewhere (Escape or re-clicking the item still closes).
+- Live menu-bar preview in Settings › Menu Bar that renders the real status-item
+  views with live data, replacing the explanatory "Tip" paragraph.
+- Real keyboard shortcuts via a proper main menu: ⌘, opens Settings, ⌘W closes
+  windows, ⌘Q quits, plus an About Info panel.
+- "Skip" button in onboarding; closing the onboarding window now counts as done
+  instead of re-opening it on every launch.
+- Privacy link (PRIVACY.md) next to the version in Settings › General.
+- "Made by Catacolabs" link (catacolabs.com) in Settings › General.
+- VoiceOver support: status items expose their live values, settings toggles are
+  labeled, charts and detail rows read out sensibly.
+- Empty states for CPU/Memory/Network panels ("Waiting for data…").
+
+### Changed
+- Toggling a metric now diffs the status items instead of rebuilding all of
+  them — no flicker, and each metric remembers its menu-bar position.
+- Settings › General "Updates" section renamed to "Refresh rate".
+- Latency, public IP, and top-process lookups show "Unavailable" on failure
+  instead of loading forever.
+- The Layout picker explains itself when disabled, and a caption notes that the
+  Network item stays inline in Stacked layout.
+- Launch-at-login failures now surface an inline error instead of silently
+  snapping the toggle back.
+- Onboarding copy no longer promises sparklines (they're opt-in); hard-coded
+  panel font sizes moved to scalable text styles.
+
 ## [0.4.5] — 2026-06-21
 
 ### Changed

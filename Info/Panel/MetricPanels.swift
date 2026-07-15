@@ -9,20 +9,67 @@ struct MetricPanel: View {
     let kind: MetricKind
     @Bindable var state: SamplingState
     let prefs: Preferences
+    /// Invoked by the footer gear. When nil (e.g. snapshots), no footer shows.
+    var onOpenSettings: (() -> Void)?
+    /// Reports pin toggles so the host can keep the popover open.
+    var onPinChanged: ((Bool) -> Void)?
+
+    @State private var pinned = false
 
     var body: some View {
-        Group {
-            switch kind {
-            case .cpu: CPUPanel(state: state, prefs: prefs)
-            case .gpu: GPUPanel(state: state, prefs: prefs)
-            case .memory: MemoryPanel(state: state, prefs: prefs)
-            case .network: NetworkPanel(state: state, prefs: prefs)
+        VStack(alignment: .leading, spacing: 12) {
+            Group {
+                switch kind {
+                case .cpu: CPUPanel(state: state, prefs: prefs)
+                case .gpu: GPUPanel(state: state, prefs: prefs)
+                case .memory: MemoryPanel(state: state, prefs: prefs)
+                case .network: NetworkPanel(state: state, prefs: prefs)
+                }
+            }
+            if onOpenSettings != nil {
+                footer
             }
         }
         .frame(width: Self.contentWidth)
         .padding(Self.padding)
         .frame(width: Self.panelWidth)
         .clipped()
+    }
+
+    /// Discoverability footer: Settings is otherwise reachable only via
+    /// right-click on the status item; the pin keeps the panel open while the
+    /// user works elsewhere.
+    private var footer: some View {
+        VStack(spacing: 8) {
+            Divider()
+            HStack {
+                Button {
+                    onOpenSettings?()
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Open Info settings")
+                .accessibilityLabel("Settings")
+
+                Spacer()
+
+                Button {
+                    pinned.toggle()
+                    onPinChanged?(pinned)
+                } label: {
+                    Image(systemName: pinned ? "pin.fill" : "pin")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
+                .help(pinned ? "Unpin — panel closes when you click away"
+                             : "Pin — keep this panel open while you work")
+                .accessibilityLabel(pinned ? "Unpin panel" : "Pin panel")
+            }
+        }
     }
 }
 
@@ -64,6 +111,10 @@ struct CPUPanel: View {
                          tint: Theme.usage(cpu?.total ?? 0),
                          secondsPerSample: prefs.updateInterval)
 
+            if cpu == nil {
+                NoDataLabel()
+            }
+
             if let cpu, !cpu.perCore.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     SectionLabel(text: "Cores (\(cpu.perCore.count))")
@@ -84,7 +135,7 @@ struct CPUPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 SectionLabel(text: "Top Processes")
-                ProcessList(rows: processes.rows)
+                ProcessList(rows: processes.rows, loaded: processes.loaded)
             }
         }
         .onAppear { processes.start(); temperature.start(enabled: prefs.showTemperature) }
@@ -117,6 +168,10 @@ struct MemoryPanel: View {
                          tint: mem.map { Theme.pressure($0.pressure) } ?? .blue,
                          secondsPerSample: prefs.updateInterval)
 
+            if mem == nil {
+                NoDataLabel()
+            }
+
             if let mem {
                 StackedBar(segments: [
                     .init(value: Double(mem.app), color: .blue),
@@ -139,7 +194,7 @@ struct MemoryPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 SectionLabel(text: "Top Processes")
-                ProcessList(rows: processes.rows)
+                ProcessList(rows: processes.rows, loaded: processes.loaded)
             }
         }
         .onAppear { processes.start() }
@@ -221,7 +276,7 @@ struct GPUPanel: View {
                     DetailRow(label: "Average", value: Fmt.percent(history.mean))
                 }
             } else {
-                Text("No GPU data").font(.caption).foregroundStyle(.secondary)
+                NoDataLabel(text: "Waiting for GPU data…")
             }
         }
         .onAppear { temperature.start(enabled: prefs.showTemperature) }
@@ -272,12 +327,17 @@ struct NetworkPanel: View {
                     DetailRow(label: "Local IP", value: localIP ?? "—")
                     if prefs.showConnectivity {
                         DetailRow(label: "Latency",
-                                  value: extras.latencyMs.map { "\(Int($0)) ms" } ?? "…")
+                                  value: extras.latencyMs.map { "\(Int($0)) ms" }
+                                      ?? (extras.latencyChecked ? "Unavailable" : "…"))
                     }
                     if prefs.showPublicIP {
-                        DetailRow(label: "Public IP", value: extras.publicIP ?? "…")
+                        DetailRow(label: "Public IP",
+                                  value: extras.publicIP
+                                      ?? (extras.publicIPChecked ? "Unavailable" : "…"))
                     }
                 }
+            } else {
+                NoDataLabel()
             }
         }
         .onAppear {

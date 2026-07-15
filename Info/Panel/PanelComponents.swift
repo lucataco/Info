@@ -21,6 +21,18 @@ enum Theme {
     static let upload = Color.green
 }
 
+/// Consistent "no data yet" placeholder for panels whose collector hasn't
+/// produced a sample (or can't on this machine).
+struct NoDataLabel: View {
+    var text = "Waiting for data…"
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// A circular gauge with the percentage in the middle.
 struct Ring: View {
     let fraction: Double
@@ -40,12 +52,15 @@ struct Ring: View {
                     .font(.system(.headline, design: .rounded)).monospacedDigit()
                     .contentTransition(.numericText())
                 if let caption {
-                    Text(caption).font(.system(size: 8)).foregroundStyle(.secondary)
+                    Text(caption).font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
         .frame(width: 62, height: 62)
         .animation(.easeOut(duration: 0.25), value: fraction)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Usage")
+        .accessibilityValue(Fmt.percent(fraction))
     }
 }
 
@@ -96,7 +111,7 @@ private struct TimeAxisCaption: View {
             Spacer()
             Text("now")
         }
-        .font(.system(size: 8))
+        .font(.caption2)
         .foregroundStyle(.tertiary)
     }
 }
@@ -131,12 +146,16 @@ struct HistoryChart: View {
                 chart
                 TimeAxisCaption(samples: values.count, secondsPerSample: secondsPerSample)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("History chart")
+            .accessibilityValue("\(format(values.last ?? 0)) now, peak \(format(values.peak))")
         } else {
             Chart { marks }
                 .chartYScale(domain: 0...1)
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .frame(height: height)
+                .accessibilityHidden(true)
         }
     }
 
@@ -186,7 +205,7 @@ struct HistoryChart: View {
                 AxisGridLine().foregroundStyle(.secondary.opacity(0.12))
                 AxisValueLabel {
                     if let d = value.as(Double.self) {
-                        Text(format(d)).font(.system(size: 8)).foregroundStyle(.tertiary)
+                        Text(format(d)).font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -239,12 +258,16 @@ struct DualHistoryChart: View {
                 chart
                 TimeAxisCaption(samples: count, secondsPerSample: secondsPerSample)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Network history chart")
+            .accessibilityValue("Download \(Fmt.rate(UInt64(download.last ?? 0))), upload \(Fmt.rate(UInt64(upload.last ?? 0)))")
         } else {
             Chart { marks(scale: scale) }
                 .chartYScale(domain: 0...1)
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .frame(height: height)
+                .accessibilityHidden(true)
         }
     }
 
@@ -266,7 +289,7 @@ struct DualHistoryChart: View {
 
     private func rateLabel(symbol: String, color: Color, bytesPerSec: Double) -> some View {
         HStack(spacing: 2) {
-            Image(systemName: symbol).font(.system(size: 8, weight: .bold)).foregroundStyle(color)
+            Image(systemName: symbol).font(.caption2.weight(.bold)).foregroundStyle(color)
             Text(Fmt.rate(UInt64(max(0, bytesPerSec)))).font(.caption2.weight(.semibold)).monospacedDigit()
         }
     }
@@ -312,7 +335,7 @@ struct DualHistoryChart: View {
                 AxisValueLabel {
                     if let d = value.as(Double.self) {
                         Text(Fmt.rateShort(UInt64(d * scale)) + "/s")
-                            .font(.system(size: 8)).foregroundStyle(.tertiary)
+                            .font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -360,6 +383,7 @@ struct DetailRow: View {
         }
         .frame(maxWidth: .infinity)
         .font(.callout)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -367,7 +391,7 @@ struct SectionLabel: View {
     let text: String
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 10, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -411,10 +435,14 @@ struct StackedBar: View {
 
 struct ProcessList: View {
     let rows: [ProcRow]
+    /// Whether the first fetch attempt has completed. Empty + loaded means the
+    /// source failed or returned nothing — say so instead of spinning forever.
+    var loaded = true
     var body: some View {
         VStack(spacing: 4) {
             if rows.isEmpty {
-                Text("Loading…").font(.caption).foregroundStyle(.secondary)
+                Text(loaded ? "Unavailable" : "Loading…")
+                    .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ForEach(rows) { row in

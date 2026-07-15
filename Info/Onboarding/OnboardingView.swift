@@ -18,6 +18,7 @@ struct OnboardingView: View {
     @State private var menuBarVisible = false
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var requiresLoginApproval = LaunchAtLogin.requiresApproval
+    @State private var loginChangeFailed = false
 
     private let lastStep = 4
 
@@ -71,7 +72,7 @@ struct OnboardingView: View {
             HeroIcon(symbol: "gauge.open.with.lines.needle.33percent",
                      colors: [.blue, .cyan])
             Text("Welcome to Info")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.system(.largeTitle, design: .rounded).weight(.bold))
             Text("Your Mac's vitals, at a glance.\nPrivate by design — everything stays on your Mac.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -83,8 +84,8 @@ struct OnboardingView: View {
         VStack(spacing: 18) {
             HeroIcon(symbol: "menubar.arrow.up.rectangle", colors: [.indigo, .purple])
             Text("Look up at your menu bar")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-            Text("Info lives at the top-right of your screen. You'll see live CPU, MEM, GPU and NET sparklines.")
+                .font(.system(.title, design: .rounded).weight(.bold))
+            Text("Info lives at the top-right of your screen, showing live readings for CPU, GPU, memory, and network.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
@@ -117,7 +118,7 @@ struct OnboardingView: View {
         VStack(spacing: 18) {
             HeroIcon(symbol: "power", colors: [.green, .mint])
             Text("Start automatically")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(.title, design: .rounded).weight(.bold))
             Text("Info launches quietly when you log in, so your stats are always there.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -125,7 +126,7 @@ struct OnboardingView: View {
             Toggle(isOn: Binding(
                 get: { launchAtLogin },
                 set: { enabled in
-                    LaunchAtLogin.setEnabled(enabled)
+                    loginChangeFailed = !LaunchAtLogin.setEnabled(enabled)
                     refreshLaunchAtLogin()
                 }
             )) {
@@ -135,7 +136,12 @@ struct OnboardingView: View {
             .padding(.horizontal, 80)
             .padding(.top, 6)
 
-            if requiresLoginApproval {
+            if loginChangeFailed {
+                Text("macOS wouldn’t change the login item. You can also set it later in Settings › General.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            } else if requiresLoginApproval {
                 Text("macOS needs approval in Login Items before Info can launch automatically.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -156,7 +162,7 @@ struct OnboardingView: View {
     private var metricsStep: some View {
         VStack(spacing: 14) {
             Text("Choose what to monitor")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(.title, design: .rounded).weight(.bold))
             Text("Toggle any metric and watch your menu bar update instantly.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -179,8 +185,8 @@ struct OnboardingView: View {
         VStack(spacing: 18) {
             HeroIcon(symbol: "checkmark.seal.fill", colors: [.blue, .green])
             Text("You're all set!")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-            Text("Click any item in your menu bar to see the details.\nRight-click for settings.")
+                .font(.system(.largeTitle, design: .rounded).weight(.bold))
+            Text("Click any menu bar item to see its details.\nSettings are a right-click — or the gear in any panel — away.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .font(.title3)
@@ -198,6 +204,13 @@ struct OnboardingView: View {
             Spacer()
             StepDots(count: lastStep + 1, current: step)
             Spacer()
+            if step < lastStep {
+                Button("Skip") { onFinish() }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .controlSize(.large)
+                    .accessibilityLabel("Skip onboarding")
+            }
             Button(step == lastStep ? "Done" : "Continue") {
                 if step == lastStep {
                     onFinish()

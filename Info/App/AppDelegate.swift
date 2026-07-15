@@ -11,42 +11,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
-        if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
-            SnapshotTool.render(toBase: CommandLine.arguments[i + 1])
-            exit(0)
-        }
-        if let i = CommandLine.arguments.firstIndex(of: "--snapshot-panels"), i + 1 < CommandLine.arguments.count {
-            SnapshotTool.renderPanels(toBase: CommandLine.arguments[i + 1])
-            exit(0)
-        }
-        if let i = CommandLine.arguments.firstIndex(of: "--snapshot-onboarding"), i + 1 < CommandLine.arguments.count {
-            SnapshotTool.renderOnboarding(toBase: CommandLine.arguments[i + 1])
-            exit(0)
-        }
-        if CommandLine.arguments.contains("--read-temp") {
-            if let smc = SMCConnection() {
-                let cpu = smc.averageTemperature(keys: SMCConnection.cpuKeys)
-                let gpu = smc.averageTemperature(keys: SMCConnection.gpuKeys)
-                smc.close()
-                Log.app.info("TEMP cpu=\(cpu.map { String(format: "%.1f", $0) } ?? "nil", privacy: .public) gpu=\(gpu.map { String(format: "%.1f", $0) } ?? "nil", privacy: .public)")
-            } else {
-                Log.app.info("TEMP smc-open-failed")
-            }
-            exit(0)
-        }
-        if CommandLine.arguments.contains("--test-net") {
-            Task {
-                let ip = await PublicIP.fetch()
-                let latency = await Connectivity.latencyMs()
-                Log.app.info("NET ip=\(ip ?? "nil", privacy: .public) latency=\(latency.map { String(format: "%.0fms", $0) } ?? "nil", privacy: .public)")
-                exit(0)
-            }
-            return
-        }
+        if runDebugCommandsIfRequested() { return }
         let selfTest = CommandLine.arguments.contains("--selftest")
         #endif
 
         Log.app.info("Info launched (pid \(ProcessInfo.processInfo.processIdentifier))")
+
+        installMainMenu()
 
         let prefs = Preferences()
         prefs.appearance.apply()
@@ -89,6 +60,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    #if DEBUG
+    /// Handles the DEBUG-only CLI verbs (`--snapshot*`, `--read-temp`,
+    /// `--test-net`). Returns true when a command took over the launch.
+    private func runDebugCommandsIfRequested() -> Bool {
+        let args = CommandLine.arguments
+        if let base = argumentValue(after: "--snapshot", in: args) {
+            SnapshotTool.render(toBase: base)
+            exit(0)
+        }
+        if let base = argumentValue(after: "--snapshot-panels", in: args) {
+            SnapshotTool.renderPanels(toBase: base)
+            exit(0)
+        }
+        if let base = argumentValue(after: "--snapshot-onboarding", in: args) {
+            SnapshotTool.renderOnboarding(toBase: base)
+            exit(0)
+        }
+        if args.contains("--read-temp") {
+            if let smc = SMCConnection() {
+                let cpu = smc.averageTemperature(keys: SMCConnection.cpuKeys)
+                let gpu = smc.averageTemperature(keys: SMCConnection.gpuKeys)
+                smc.close()
+                Log.app.info("TEMP cpu=\(cpu.map { String(format: "%.1f", $0) } ?? "nil", privacy: .public) gpu=\(gpu.map { String(format: "%.1f", $0) } ?? "nil", privacy: .public)")
+            } else {
+                Log.app.info("TEMP smc-open-failed")
+            }
+            exit(0)
+        }
+        if args.contains("--test-net") {
+            Task {
+                let ip = await PublicIP.fetch()
+                let latency = await Connectivity.latencyMs()
+                Log.app.info("NET ip=\(ip ?? "nil", privacy: .public) latency=\(latency.map { String(format: "%.0fms", $0) } ?? "nil", privacy: .public)")
+                exit(0)
+            }
+            return true
+        }
+        return false
+    }
+
+    private func argumentValue(after flag: String, in args: [String]) -> String? {
+        guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
+        return args[index + 1]
+    }
+    #endif
+
     func applicationWillTerminate(_ notification: Notification) {
         Log.app.info("Info terminating")
         self.powerGate?.stop()
@@ -100,11 +117,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Even accessory apps get key-equivalent dispatch through the main menu,
+    /// so the shortcuts advertised in the status-item menu (⌘, ⌘Q) — plus ⌘W
+    /// to close Settings/Onboarding — actually work whenever a window is key.
+    private func installMainMenu() {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Info",
+                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                        keyEquivalent: "")
+        appMenu.addItem(.separator())
+        let settingsItem = NSMenuItem(title: "Settings…",
+                                      action: #selector(openSettingsFromMenu),
+                                      keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit Info",
+                        action: #selector(NSApplication.terminate(_:)),
+                        keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Close Window",
+                           action: #selector(NSWindow.performClose(_:)),
+                           keyEquivalent: "w")
+        windowMenu.addItem(withTitle: "Minimize",
+                           action: #selector(NSWindow.performMiniaturize(_:)),
+                           keyEquivalent: "m")
+        windowItem.submenu = windowMenu
+        main.addItem(windowItem)
+
+        NSApp.mainMenu = main
+    }
+
+    @objc private func openSettingsFromMenu() {
+        showSettings()
+    }
+
     // MARK: - Onboarding
 
     private func showOnboarding() {
         guard let prefs, let state else { return }
-        windows.showOnboarding(onClose: {}) {
+        // Closing the window at any step counts as "seen" — onboarding must
+        // never nag on every launch.
+        let markOnboarded: () -> Void = { [weak self] in
+            self?.prefs?.didOnboard = true
+        }
+        windows.showOnboarding(onClose: markOnboarded) {
             OnboardingView(
                 prefs: prefs,
                 state: state,
@@ -124,10 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Settings
 
     private func showSettings() {
-        guard let prefs else { return }
+        guard let prefs, let state else { return }
         windows.showSettings {
             SettingsView(
                 prefs: prefs,
+                state: state,
                 onMetricsChanged: { [weak self] in
                     guard let self, let prefs = self.prefs else { return }
                     self.engine?.setEnabledMetrics(prefs.enabledMetrics)

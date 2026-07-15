@@ -251,6 +251,35 @@ import Foundation
         controller.tearDown()
     }
 
+    @Test @MainActor func setMetricsDiffsInsteadOfRebuilding() {
+        let controller = StatusItemController()
+        let prefs = Preferences(defaults: UserDefaults(suiteName: "test.\(UUID().uuidString)")!)
+        let state = SamplingState() // controller holds state weakly; keep it alive
+        controller.install(state: state, prefs: prefs, metrics: [.cpu, .memory])
+        #expect(controller.statusItems.count == 2)
+        let cpuItem = controller.statusItems.first
+
+        // Removing a metric keeps the surviving item instance (no flicker).
+        controller.setMetrics([.cpu])
+        #expect(controller.statusItems.count == 1)
+        #expect(controller.statusItems.first === cpuItem)
+
+        // Adding one creates only the missing item; the survivor is untouched.
+        controller.setMetrics([.cpu, .network])
+        #expect(controller.statusItems.count == 2)
+        #expect(controller.statusItems.contains { $0 === cpuItem })
+
+        // Emptying swaps in the fallback item; re-enabling removes it again.
+        controller.setMetrics([])
+        #expect(controller.statusItems.count == 1)
+        #expect(controller.statusItems.first?.button?.title == "Info")
+        controller.setMetrics([.gpu])
+        #expect(controller.statusItems.count == 1)
+        #expect(controller.statusItems.first?.button?.title != "Info")
+
+        controller.tearDown()
+    }
+
     @Test func popoverPositionsBelowTopMenuItem() {
         let visible = NSRect(x: 0, y: 0, width: 1000, height: 700)
         let anchor = NSRect(x: 800, y: 700, width: 40, height: 22)

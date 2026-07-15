@@ -44,6 +44,11 @@ enum Connectivity {
 final class NetworkExtrasModel {
     var publicIP: String?
     var latencyMs: Double?
+    /// True once a public-IP fetch attempt has finished — lets the UI show
+    /// "Unavailable" on failure instead of an eternal "…".
+    var publicIPChecked = false
+    /// True once a latency measurement attempt has finished.
+    var latencyChecked = false
 
     private var task: Task<Void, Never>?
     private var generation = 0
@@ -52,6 +57,8 @@ final class NetworkExtrasModel {
 
     func start(showIP: Bool, showLatency: Bool) {
         guard task == nil, showIP || showLatency else { return }
+        publicIPChecked = false
+        latencyChecked = false
         generation += 1
         let generation = self.generation
         task = Task { [weak self] in
@@ -65,11 +72,13 @@ final class NetworkExtrasModel {
                 let ip = await PublicIP.fetch()
                 if Task.isCancelled { return }
                 self?.publicIP = ip
+                self?.publicIPChecked = true
             }
             while !Task.isCancelled && showLatency {
                 let latency = await Connectivity.latencyMs()
                 if Task.isCancelled { return }
                 self?.latencyMs = latency
+                self?.latencyChecked = true
                 try? await Task.sleep(for: .seconds(5))
             }
         }
