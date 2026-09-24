@@ -102,7 +102,7 @@ make CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build-for-testing
 # --- Build -----------------------------------------------------------------
 note "Building Release $APP_NAME.app"
 if [ -n "${CODE_SIGN_IDENTITY:-}" ]; then
-  CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" make build
+  OTHER_CODE_SIGN_FLAGS=--timestamp CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY" DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" make build
 else
   make build
 fi
@@ -118,6 +118,8 @@ if [ "${RELEASE_ALLOW_ADHOC:-0}" != "1" ]; then
     || err "built app is not signed by a Developer ID Application authority"
   [[ "$SIGNING_DETAILS" == *"TeamIdentifier=$DEVELOPMENT_TEAM"* ]] \
     || err "built app team does not match DEVELOPMENT_TEAM"
+  [[ "$SIGNING_DETAILS" == *"Timestamp="* ]] \
+    || err "built app is missing a secure timestamp"
 fi
 
 # --- Zip -------------------------------------------------------------------
