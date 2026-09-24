@@ -28,6 +28,11 @@ final class StatusItemController {
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var popoverNotificationTokens: [NSObjectProtocol] = []
+    private let activity: AppActivityState
+
+    init(activity: AppActivityState = AppActivityState()) {
+        self.activity = activity
+    }
 
     /// Invoked when the user picks "Settings…" from the right-click menu.
     var onOpenSettings: (() -> Void)?
@@ -68,6 +73,7 @@ final class StatusItemController {
         item.autosaveName = "Info.\(kind.rawValue)"
         button.toolTip = kind.title
         button.setAccessibilityLabel(kind.title)
+        button.setAccessibilityHelp("Open \(kind.title) details. Right-click for Settings.")
 
         view.frame = button.bounds
         view.autoresizingMask = [.width, .height]
@@ -88,6 +94,8 @@ final class StatusItemController {
         }
         button.title = "Info"
         button.toolTip = "Info — Settings"
+        button.setAccessibilityLabel("Info settings")
+        button.setAccessibilityHelp("Open Info settings")
         button.target = self
         button.action = #selector(handleFallbackClick(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -105,8 +113,11 @@ final class StatusItemController {
 
     func refresh() {
         guard let state else { return }
+        let includeHistory = prefs?.menuBarStyle.showSparkline ?? true
         for bar in bars {
-            let data = MenuBarItemData.current(for: bar.kind, state: state)
+            let data = MenuBarItemData.current(for: bar.kind,
+                                                state: state,
+                                                includeHistory: includeHistory)
             bar.view.apply(data)
             // Expose the live value to VoiceOver — the item is custom-drawn, so
             // the button itself must carry it.
@@ -191,7 +202,7 @@ final class StatusItemController {
         closePopover()
 
         let panelView = MetricPanel(
-            kind: bar.kind, state: state, prefs: prefs,
+            kind: bar.kind, state: state, prefs: prefs, activity: activity,
             onOpenSettings: { [weak self] in
                 self?.closePopover()
                 self?.onOpenSettings?()

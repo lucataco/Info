@@ -8,14 +8,23 @@ import IOKit
 /// per accelerator per second when a key was absent, which is a major source of
 /// its log spam. Confined to `MetricsEngine.queue`.
 final class GPUCollector {
+    private var nameCache: [UInt: String] = [:]
+
     func sample() -> GPUSample? {
-        guard let matching = IOServiceMatching("IOAccelerator") else { return nil }
+        guard let matching = IOServiceMatching("IOAccelerator") else {
+            nameCache.removeAll()
+            return nil
+        }
         var iterator = io_iterator_t()
         guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS
-        else { return nil }
+        else {
+            nameCache.removeAll()
+            return nil
+        }
         defer { IOObjectRelease(iterator) }
 
         var best: GPUSample?
+        var seenServiceIDs = Set<UInt>()
         var service = IOIteratorNext(iterator)
         while service != 0 {
             let current = service
@@ -31,8 +40,9 @@ final class GPUCollector {
             guard let utilPercent = intValue(perf["Device Utilization %"])
                 ?? intValue(perf["GPU Activity(%)"]) else { continue }
 
+            seenServiceIDs.insert(UInt(current))
             let candidate = GPUSample(
-                name: name(for: current),
+                name: cachedName(for: current),
                 utilization: clamp01(Double(utilPercent) / 100),
                 renderUtilization: intValue(perf["Renderer Utilization %"]).map { clamp01(Double($0) / 100) },
                 tilerUtilization: intValue(perf["Tiler Utilization %"]).map { clamp01(Double($0) / 100) },
@@ -45,10 +55,22 @@ final class GPUCollector {
                 best = candidate
             }
         }
+        nameCache = nameCache.filter { seenServiceIDs.contains($0.key) }
         return best
     }
 
     // MARK: - Helpers
+
+    private func cachedName(for entry: io_registry_entry_t) -> String {
+        let key = UInt(entry)
+        if let cached = nameCache[key] { return cached }
+        let resolved = name(for: entry)
+        if nameCache.count >= 16 {
+            nameCache.removeAll(keepingCapacity: true)
+        }
+        nameCache[key] = resolved
+        return resolved
+    }
 
     private func name(for entry: io_registry_entry_t) -> String {
         var resolved = "GPU"

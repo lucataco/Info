@@ -51,6 +51,8 @@ final class MetricsEngine: @unchecked Sendable {
     private var interval: TimeInterval
     private var paused = false
     private var enabledMetrics: Set<MetricKind>
+    private let generationLock = NSLock()
+    private var publishGeneration: UInt = 0
 
     private let publish: @MainActor @Sendable (MetricsSnapshot) -> Void
 
@@ -58,7 +60,7 @@ final class MetricsEngine: @unchecked Sendable {
          enabledMetrics: [MetricKind] = MetricKind.allCases,
          collectors: MetricCollectors = .live(),
          publish: @escaping @MainActor @Sendable (MetricsSnapshot) -> Void) {
-        self.interval = interval
+        self.interval = Self.validInterval(interval)
         self.enabledMetrics = Set(enabledMetrics)
         self.collectors = collectors
         self.publish = publish
@@ -73,14 +75,15 @@ final class MetricsEngine: @unchecked Sendable {
     }
 
     func stop() {
+        invalidatePublishGeneration()
         queue.async { [weak self] in
-            self?.timer?.cancel()
-            self?.timer = nil
+            self?.cancelTimer()
         }
     }
 
     /// Pause/resume sampling for sleep / screen-lock / occlusion gating.
     func setPaused(_ value: Bool) {
+        invalidatePublishGeneration()
         queue.async { [weak self] in
             guard let self else { return }
             let wasActive = self.isActive
@@ -91,14 +94,16 @@ final class MetricsEngine: @unchecked Sendable {
     }
 
     func setInterval(_ newValue: TimeInterval) {
+        invalidatePublishGeneration()
         queue.async { [weak self] in
             guard let self else { return }
-            self.interval = newValue
+            self.interval = Self.validInterval(newValue)
             if self.timer != nil { self.installTimer() }
         }
     }
 
     func setEnabledMetrics(_ metrics: [MetricKind]) {
+        invalidatePublishGeneration()
         queue.async { [weak self] in
             guard let self else { return }
             let wasActive = self.isActive
@@ -126,8 +131,12 @@ final class MetricsEngine: @unchecked Sendable {
         let state = Log.signposter.beginInterval("sample")
         let snapshot = sampleAll()
         Log.signposter.endInterval("sample", state)
+        let generation = currentPublishGeneration()
         let publish = self.publish
-        Task { @MainActor in publish(snapshot) }
+        Task { @MainActor in
+            guard self.isCurrentPublishGeneration(generation) else { return }
+            publish(snapshot)
+        }
     }
 
     private func sampleAll() -> MetricsSnapshot {
@@ -135,6 +144,25 @@ final class MetricsEngine: @unchecked Sendable {
     }
 
     private var isActive: Bool { !paused && !enabledMetrics.isEmpty }
+
+    private func invalidatePublishGeneration() {
+        generationLock.withLock {
+            publishGeneration &+= 1
+        }
+    }
+
+    private func isCurrentPublishGeneration(_ generation: UInt) -> Bool {
+        generationLock.withLock { publishGeneration == generation }
+    }
+
+    private func currentPublishGeneration() -> UInt {
+        generationLock.withLock { publishGeneration }
+    }
+
+    private static func validInterval(_ value: TimeInterval) -> TimeInterval {
+        guard value.isFinite else { return 2 }
+        return min(60, max(0.05, value))
+    }
 
     private func cancelTimer() {
         timer?.cancel()

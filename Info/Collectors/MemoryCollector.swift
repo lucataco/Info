@@ -6,16 +6,16 @@ final class MemoryCollector {
     private let totalBytes: UInt64 = {
         var size: UInt64 = 0
         var len = MemoryLayout<UInt64>.size
-        sysctlbyname("hw.memsize", &size, &len, nil, 0)
+        guard sysctlbyname("hw.memsize", &size, &len, nil, 0) == 0 else { return 0 }
         return size
     }()
 
     /// Page size fetched once via the (concurrency-safe) host_page_size call,
     /// rather than the non-Sendable `vm_kernel_page_size` global.
     private let pageSize: UInt64 = {
-        var ps: vm_size_t = 0
-        host_page_size(mach_host_self(), &ps)
-        return ps > 0 ? UInt64(ps) : 16384
+        var pageSizeValue: vm_size_t = 0
+        let result = host_page_size(mach_host_self(), &pageSizeValue)
+        return result == KERN_SUCCESS && pageSizeValue > 0 ? UInt64(pageSizeValue) : 16384
     }()
 
     func sample() -> MemorySample? {
@@ -65,7 +65,7 @@ final class MemoryCollector {
         var level: Int32 = 0
         var len = MemoryLayout<Int32>.size
         guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &len, nil, 0) == 0 else {
-            return .normal
+            return .unavailable
         }
         switch level {
         case 4: return .critical

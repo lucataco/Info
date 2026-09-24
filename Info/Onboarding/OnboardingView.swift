@@ -19,6 +19,7 @@ struct OnboardingView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var requiresLoginApproval = LaunchAtLogin.requiresApproval
     @State private var loginChangeFailed = false
+    @State private var visibilityAdvanceTask: Task<Void, Never>?
 
     private let lastStep = 4
 
@@ -73,7 +74,7 @@ struct OnboardingView: View {
                      colors: [.blue, .cyan])
             Text("Welcome to Info")
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
-            Text("Your Mac's vitals, at a glance.\nPrivate by design — everything stays on your Mac.")
+            Text("Your Mac's vitals, at a glance.\nMetrics stay on your Mac. Optional network checks are off unless you enable them.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .font(.title3)
@@ -111,6 +112,18 @@ struct OnboardingView: View {
         }
         .onReceive(Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()) { _ in
             menuBarVisible = MenuBarVisibility.isLikelyVisible(statusItemsProvider())
+        }
+        .onChange(of: menuBarVisible) { _, visible in
+            visibilityAdvanceTask?.cancel()
+            guard visible, step == 1 else { return }
+            visibilityAdvanceTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, menuBarVisible, step == 1 else { return }
+                withAnimation { step = 2 }
+            }
+        }
+        .onDisappear {
+            visibilityAdvanceTask?.cancel()
         }
     }
 
@@ -235,6 +248,7 @@ private struct HeroIcon: View {
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
             .frame(height: 90)
+            .accessibilityHidden(true)
     }
 }
 
@@ -243,12 +257,14 @@ private struct StepDots: View {
     let current: Int
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(0..<count, id: \.self) { i in
+            ForEach(0..<count, id: \.self) { index in
                 Circle()
-                    .fill(i == current ? Color.accentColor : Color.secondary.opacity(0.3))
+                    .fill(index == current ? Color.accentColor : Color.secondary.opacity(0.3))
                     .frame(width: 7, height: 7)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(current + 1) of \(count)")
     }
 }
 
@@ -268,7 +284,13 @@ private struct MetricChooserRow: View {
                 .opacity(isOn ? 1 : 0.3)
 
             Spacer()
-            Toggle("", isOn: $isOn).labelsHidden()
+            Toggle(isOn: $isOn) {
+                Text(kind.title)
+            }
+            .labelsHidden()
+            .accessibilityLabel("Show \(kind.title) in menu bar")
+            .accessibilityValue(isOn ? "On" : "Off")
+            .accessibilityHint("Double-click to \(isOn ? "hide" : "show") \(kind.title) in the menu bar.")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -279,16 +301,16 @@ private struct MetricChooserRow: View {
     private var preview: some View {
         switch kind {
         case .network:
-            DualHistoryChart(download: state.netDownHistory.values,
-                             upload: state.netUpHistory.values, height: 30, showsDetail: false)
+            DualHistoryChart(downloadSamples: state.netDownHistory.values,
+                             uploadSamples: state.netUpHistory.values, height: 30, showsDetail: false)
         case .cpu:
-            HistoryChart(values: state.cpuHistory.values,
+            HistoryChart(samples: state.cpuHistory.values,
                          tint: Theme.usage(state.cpu?.total ?? 0), height: 30, showsDetail: false)
         case .gpu:
-            HistoryChart(values: state.gpuHistory.values,
+            HistoryChart(samples: state.gpuHistory.values,
                          tint: Theme.usage(state.gpu?.utilization ?? 0), height: 30, showsDetail: false)
         case .memory:
-            HistoryChart(values: state.memoryHistory.values,
+            HistoryChart(samples: state.memoryHistory.values,
                          tint: state.memory.map { Theme.pressure($0.pressure) } ?? .blue,
                          height: 30, showsDetail: false)
         }

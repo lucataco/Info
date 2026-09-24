@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 /// The single source of truth the UI reads from. Lives on the main actor.
@@ -14,11 +15,22 @@ final class SamplingState {
     var gpu: GPUSample?
     var network: NetworkSample?
 
-    var cpuHistory: RingBuffer<Double>
-    var memoryHistory: RingBuffer<Double>
-    var gpuHistory: RingBuffer<Double>
-    var netUpHistory: RingBuffer<Double>
-    var netDownHistory: RingBuffer<Double>
+    var cpuStatus: MetricStatus = .loading
+    var memoryStatus: MetricStatus = .loading
+    var gpuStatus: MetricStatus = .loading
+    var networkStatus: MetricStatus = .loading
+
+    var cpuHistory: RingBuffer<HistoryPoint>
+    var memoryHistory: RingBuffer<HistoryPoint>
+    var gpuHistory: RingBuffer<HistoryPoint>
+    var netUpHistory: RingBuffer<HistoryPoint>
+    var netDownHistory: RingBuffer<HistoryPoint>
+
+    var cpuValues: [Double] { cpuHistory.values.map(\.value) }
+    var memoryValues: [Double] { memoryHistory.values.map(\.value) }
+    var gpuValues: [Double] { gpuHistory.values.map(\.value) }
+    var netUpValues: [Double] { netUpHistory.values.map(\.value) }
+    var netDownValues: [Double] { netDownHistory.values.map(\.value) }
 
     /// Non-observed callback for AppKit consumers (status item redraws).
     @ObservationIgnored var onUpdate: (() -> Void)?
@@ -32,29 +44,99 @@ final class SamplingState {
         self.netDownHistory = RingBuffer(capacity: historyLength)
     }
 
-    func ingest(_ snapshot: MetricsSnapshot) {
-        if snapshot.enabledMetrics.contains(.cpu) {
-            cpu = snapshot.cpu
-            if let c = snapshot.cpu { cpuHistory.append(c.total) } else { cpuHistory.removeAll() }
+    func setEnabledMetrics(_ metrics: [MetricKind]) {
+        let enabled = Set(metrics)
+        if !enabled.contains(.cpu) {
+            cpu = nil
+            cpuStatus = .disabled
+            cpuHistory.removeAll()
         }
-        if snapshot.enabledMetrics.contains(.memory) {
-            memory = snapshot.memory
-            if let m = snapshot.memory { memoryHistory.append(m.usage) } else { memoryHistory.removeAll() }
+        if !enabled.contains(.memory) {
+            memory = nil
+            memoryStatus = .disabled
+            memoryHistory.removeAll()
         }
-        if snapshot.enabledMetrics.contains(.gpu) {
-            gpu = snapshot.gpu
-            if let g = snapshot.gpu { gpuHistory.append(g.utilization) } else { gpuHistory.removeAll() }
+        if !enabled.contains(.gpu) {
+            gpu = nil
+            gpuStatus = .disabled
+            gpuHistory.removeAll()
         }
-        if snapshot.enabledMetrics.contains(.network) {
-            network = snapshot.network
-            if let n = snapshot.network {
-                netUpHistory.append(Double(n.uploadBytesPerSec))
-                netDownHistory.append(Double(n.downloadBytesPerSec))
-            } else {
-                netUpHistory.removeAll()
-                netDownHistory.removeAll()
-            }
+        if !enabled.contains(.network) {
+            network = nil
+            networkStatus = .disabled
+            netUpHistory.removeAll()
+            netDownHistory.removeAll()
         }
         onUpdate?()
+    }
+
+    func ingest(_ snapshot: MetricsSnapshot) {
+        updateMetric(snapshot.cpu,
+                     enabled: snapshot.enabledMetrics.contains(.cpu),
+                     current: &cpu,
+                     status: &cpuStatus,
+                     history: &cpuHistory,
+                     timestamp: snapshot.timestamp) { $0.total }
+
+        updateMetric(snapshot.memory,
+                     enabled: snapshot.enabledMetrics.contains(.memory),
+                     current: &memory,
+                     status: &memoryStatus,
+                     history: &memoryHistory,
+                     timestamp: snapshot.timestamp) { $0.usage }
+
+        updateMetric(snapshot.gpu,
+                     enabled: snapshot.enabledMetrics.contains(.gpu),
+                     current: &gpu,
+                     status: &gpuStatus,
+                     history: &gpuHistory,
+                     timestamp: snapshot.timestamp) { $0.utilization }
+
+        if !snapshot.enabledMetrics.contains(.network) {
+            network = nil
+            networkStatus = .disabled
+            netUpHistory.removeAll()
+            netDownHistory.removeAll()
+        } else if let networkSample = snapshot.network {
+            network = networkSample
+            networkStatus = .live(at: snapshot.timestamp)
+            netUpHistory.append(HistoryPoint(value: Double(networkSample.uploadBytesPerSec),
+                                             timestamp: snapshot.timestamp))
+            netDownHistory.append(HistoryPoint(value: Double(networkSample.downloadBytesPerSec),
+                                               timestamp: snapshot.timestamp))
+        } else if network == nil {
+            networkStatus = .unavailable
+        } else {
+            networkStatus = .stale(since: networkStatus.updatedAt)
+        }
+
+        onUpdate?()
+    }
+
+    private func updateMetric<Value>(
+        _ value: Value?,
+        enabled: Bool,
+        current: inout Value?,
+        status: inout MetricStatus,
+        history: inout RingBuffer<HistoryPoint>,
+        timestamp: Date,
+        valueForHistory: (Value) -> Double
+    ) {
+        guard enabled else {
+            current = nil
+            status = .disabled
+            history.removeAll()
+            return
+        }
+
+        if let value {
+            current = value
+            status = .live(at: timestamp)
+            history.append(HistoryPoint(value: valueForHistory(value), timestamp: timestamp))
+        } else if current == nil {
+            status = .unavailable
+        } else {
+            status = .stale(since: status.updatedAt)
+        }
     }
 }

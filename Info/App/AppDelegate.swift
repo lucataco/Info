@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engine: MetricsEngine?
     private var statusController: StatusItemController?
     private var powerGate: PowerGate?
+    private var activity: AppActivityState?
     private let windows = WindowManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,7 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let prefs = Preferences()
         prefs.appearance.apply()
         let state = SamplingState()
-        let controller = StatusItemController()
+        let activity = AppActivityState()
+        let controller = StatusItemController(activity: activity)
         controller.onOpenSettings = { [weak self] in self?.showSettings() }
         controller.install(state: state, prefs: prefs, metrics: prefs.enabledMetrics)
         state.onUpdate = { [weak controller] in controller?.refresh() }
@@ -33,7 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         engine.start()
 
-        let powerGate = PowerGate(engine: engine)
+        let powerGate = PowerGate(engine: engine, activity: activity)
+        activity.start()
         powerGate.start()
 
         self.prefs = prefs
@@ -41,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusController = controller
         self.engine = engine
         self.powerGate = powerGate
+        self.activity = activity
 
         if !prefs.didOnboard {
             showOnboarding()
@@ -92,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task {
                 let ip = await PublicIP.fetch()
                 let latency = await Connectivity.latencyMs()
-                Log.app.info("NET ip=\(ip ?? "nil", privacy: .public) latency=\(latency.map { String(format: "%.0fms", $0) } ?? "nil", privacy: .public)")
+                Log.app.info("NET ip=\(ip ?? "nil", privacy: .private(mask: .hash)) latency=\(latency.map { String(format: "%.0fms", $0) } ?? "nil", privacy: .public)")
                 exit(0)
             }
             return true
@@ -109,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         Log.app.info("Info terminating")
         self.powerGate?.stop()
+        self.activity?.stop()
         self.engine?.stop()
         self.statusController?.tearDown()
     }
@@ -175,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 statusItemsProvider: { [weak self] in self?.statusController?.statusItems ?? [] },
                 onMetricsChanged: { [weak self] in
                     guard let self, let prefs = self.prefs else { return }
+                    self.state?.setEnabledMetrics(prefs.enabledMetrics)
                     self.engine?.setEnabledMetrics(prefs.enabledMetrics)
                     self.statusController?.setMetrics(prefs.enabledMetrics)
                 },
@@ -195,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 state: state,
                 onMetricsChanged: { [weak self] in
                     guard let self, let prefs = self.prefs else { return }
+                    self.state?.setEnabledMetrics(prefs.enabledMetrics)
                     self.engine?.setEnabledMetrics(prefs.enabledMetrics)
                     self.statusController?.setMetrics(prefs.enabledMetrics)
                 },

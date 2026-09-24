@@ -15,7 +15,8 @@ open -a Info
 ```
 
 Info is a menu-bar-only app, so it appears in the macOS menu bar rather than the
-Dock. It is ad-hoc signed, so the cask strips the quarantine attribute on install.
+Dock. Local development builds may be ad-hoc signed; public releases use Developer ID
+signing and notarization.
 
 ## Features
 
@@ -59,9 +60,11 @@ The distributable DMG is written to `build/Info.dmg`.
 
 ```sh
 make verify
+make ci
 ```
 
-Ad-hoc builds are expected to fail Gatekeeper assessment on other Macs. For distribution, use Developer ID signing and notarization.
+Ad-hoc local builds are expected to fail Gatekeeper assessment on other Macs. Public
+releases must use Developer ID signing and notarization.
 
 ## Notarize
 
@@ -81,11 +84,14 @@ xcrun notarytool store-credentials your-notarytool-profile --apple-id you@exampl
 Releases are published to the [`lucataco/homebrew-tap`](https://github.com/lucataco/homebrew-tap) cask `info`.
 
 1. Bump `MARKETING_VERSION` (and `CURRENT_PROJECT_VERSION`) in `project.yml`, then commit and push.
-2. Cut the release:
+2. Cut the release with a Developer ID identity and team. The release script runs lint,
+   tests, verifies the built bundle version, and publishes from the exact source commit:
 
    ```sh
-   make release
+   make release CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" DEVELOPMENT_TEAM=TEAMID NOTARY_PROFILE=your-notarytool-profile
    ```
+
+   For a local rehearsal only, set `RELEASE_ALLOW_ADHOC=1`; never publish that artifact.
 
 `make release` (via `tools/release.sh`) builds a Release `Info.app`, zips it, creates a
 GitHub release tagged `v<version>` with the zip attached, then bumps the `version` and

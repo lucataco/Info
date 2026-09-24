@@ -1,29 +1,52 @@
-import Observation
 import Foundation
+import Observation
+import Darwin
 
-/// Public IP lookup — **opt-in, on-demand, cached**. Unlike Stats (which calls
-/// the author's server on by default), this is off by default and uses a
-/// well-known generic echo endpoint only when the user turns it on.
 enum PublicIP {
     static let defaultEndpoint = "https://api.ipify.org"
+
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
 
     static func fetch(from endpoint: String = defaultEndpoint) async -> String? {
         guard let url = URL(string: endpoint) else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
+        guard let (data, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              httpResponse.url?.host == url.host,
+              data.count <= 64,
               let text = String(data: data, encoding: .utf8)?
                   .trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty, text.count < 64 else { return nil }
+              isValidIP(text) else { return nil }
         return text
+    }
+
+    private static func isValidIP(_ value: String) -> Bool {
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        return value.withCString { pointer in
+            inet_pton(AF_INET, pointer, &ipv4) == 1 || inet_pton(AF_INET6, pointer, &ipv6) == 1
+        }
     }
 }
 
-/// Connectivity latency — opt-in, measured with a lightweight HEAD request only
-/// while the Network panel is open (no constant background pings).
 enum Connectivity {
     static let defaultHost = "https://captive.apple.com"
+
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
 
     static func latencyMs(host: String = defaultHost) async -> Double? {
         guard let url = URL(string: host) else { return nil }
@@ -32,61 +55,80 @@ enum Connectivity {
         request.timeoutInterval = 5
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let start = Date()
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
-              response is HTTPURLResponse else { return nil }
+        guard let (_, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode),
+              httpResponse.url?.host == url.host else { return nil }
         return Date().timeIntervalSince(start) * 1000
     }
 }
 
-/// Drives the optional Network panel extras while it's visible.
 @MainActor
 @Observable
 final class NetworkExtrasModel {
     var publicIP: String?
     var latencyMs: Double?
-    /// True once a public-IP fetch attempt has finished — lets the UI show
-    /// "Unavailable" on failure instead of an eternal "…".
     var publicIPChecked = false
-    /// True once a latency measurement attempt has finished.
     var latencyChecked = false
 
-    private var task: Task<Void, Never>?
-    private var generation = 0
+    @ObservationIgnored nonisolated(unsafe) private var task: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var cancellation: CancellationToken?
 
-    deinit { MainActor.assumeIsolated { task?.cancel() } }
+    deinit {
+        task?.cancel()
+        cancellation?.cancel()
+    }
 
     func start(showIP: Bool, showLatency: Bool) {
         guard task == nil, showIP || showLatency else { return }
+        let cancellation = CancellationToken()
+        self.cancellation = cancellation
+        publicIP = nil
+        latencyMs = nil
         publicIPChecked = false
         latencyChecked = false
-        generation += 1
-        let generation = self.generation
-        task = Task { [weak self] in
+        task = Task { [weak self, cancellation] in
             defer {
-                Task { @MainActor in
-                    guard self?.generation == generation else { return }
+                Task { @MainActor [weak self] in
+                    guard self?.cancellation === cancellation else { return }
                     self?.task = nil
+                    self?.cancellation = nil
                 }
             }
             if showIP {
                 let ip = await PublicIP.fetch()
-                if Task.isCancelled { return }
+                guard !Task.isCancelled && !cancellation.isCancelled else { return }
                 self?.publicIP = ip
                 self?.publicIPChecked = true
             }
-            while !Task.isCancelled && showLatency {
+
+            var failures = 0
+            while !Task.isCancelled && !cancellation.isCancelled && showLatency {
                 let latency = await Connectivity.latencyMs()
-                if Task.isCancelled { return }
-                self?.latencyMs = latency
-                self?.latencyChecked = true
-                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled && !cancellation.isCancelled else { return }
+                if let latency {
+                    self?.latencyMs = latency
+                    self?.latencyChecked = true
+                    failures = 0
+                    try? await Task.sleep(for: .seconds(5))
+                } else {
+                    self?.latencyMs = nil
+                    self?.latencyChecked = true
+                    failures += 1
+                    try? await Task.sleep(for: .seconds(RetryBackoff.delay(failureCount: failures, base: 5)))
+                }
             }
         }
     }
 
     func stop() {
-        generation += 1
+        cancellation?.cancel()
         task?.cancel()
         task = nil
+        cancellation = nil
+        publicIP = nil
+        latencyMs = nil
+        publicIPChecked = false
+        latencyChecked = false
     }
 }

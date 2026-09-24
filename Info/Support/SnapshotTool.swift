@@ -86,7 +86,8 @@ enum SnapshotTool {
     private static func writePanel(kind: MetricKind, state: SamplingState, prefs: Preferences, to path: String) {
         // ImageRenderer is the correct way to rasterize SwiftUI (captures text,
         // which cacheDisplay misses).
-        let content = MetricPanel(kind: kind, state: state, prefs: prefs)
+        let content = MetricPanel(kind: kind, state: state, prefs: prefs,
+                                 activity: AppActivityState())
             .environment(\.colorScheme, .dark)
             .background(Color(white: 0.13))
         let renderer = ImageRenderer(content: content)

@@ -1,39 +1,74 @@
-import Observation
 import Foundation
+import Observation
 
-/// On-demand CPU/GPU temperature via the SMC. Default OFF; only runs while a
-/// panel is visible AND the user enabled temperature in settings, at a slow 5s
-/// cadence. This keeps the one power-hungry path (SMC) cold by default.
+enum TemperatureAvailability: Sendable, Equatable {
+    case idle
+    case loading
+    case available
+    case unavailable
+}
+
 @MainActor
 @Observable
 final class TemperatureModel {
     var celsius: Double?
+    var availability: TemperatureAvailability = .idle
 
-    private var task: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var task: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var cancellation: CancellationToken?
     private let keys: [String]
 
     init(kind: MetricKind) {
         keys = kind == .gpu ? SMCConnection.gpuKeys : SMCConnection.cpuKeys
     }
 
-    deinit { MainActor.assumeIsolated { task?.cancel() } }
+    deinit {
+        task?.cancel()
+        cancellation?.cancel()
+    }
 
     func start(enabled: Bool) {
         guard enabled, task == nil else { return }
         let keys = self.keys
-        task = Task { [weak self] in
-            while !Task.isCancelled {
+        let cancellation = CancellationToken()
+        self.cancellation = cancellation
+        celsius = nil
+        availability = .loading
+        task = Task { [weak self, cancellation] in
+            defer {
+                Task { @MainActor [weak self] in
+                    guard self?.cancellation === cancellation else { return }
+                    self?.task = nil
+                    self?.cancellation = nil
+                }
+            }
+            var failures = 0
+            while !Task.isCancelled && !cancellation.isCancelled {
                 let value = await Self.read(keys: keys)
-                if Task.isCancelled { return }
-                self?.celsius = value
-                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled && !cancellation.isCancelled else { return }
+                if let value {
+                    self?.celsius = value
+                    self?.availability = .available
+                    failures = 0
+                } else {
+                    self?.celsius = nil
+                    self?.availability = .unavailable
+                    failures += 1
+                    if failures >= 3 { return }
+                }
+                let delay = value == nil ? RetryBackoff.delay(failureCount: failures, base: 5) : 5
+                try? await Task.sleep(for: .seconds(delay))
             }
         }
     }
 
     func stop() {
+        cancellation?.cancel()
         task?.cancel()
         task = nil
+        cancellation = nil
+        celsius = nil
+        availability = .idle
     }
 
     private static func read(keys: [String]) async -> Double? {

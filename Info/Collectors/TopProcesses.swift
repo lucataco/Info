@@ -17,37 +17,64 @@ final class TopProcessesModel {
     /// True once the first `ps` attempt has finished — distinguishes "still
     /// loading" from "`ps` returned nothing / failed" in the UI.
     var loaded = false
-    private var task: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var task: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var cancellation: CancellationToken?
     private let kind: MetricKind
 
     init(kind: MetricKind) { self.kind = kind }
 
-    deinit { MainActor.assumeIsolated { task?.cancel() } }
+    deinit {
+        task?.cancel()
+        cancellation?.cancel()
+    }
 
     func start() {
         guard task == nil else { return }
         let kind = self.kind
-        task = Task { [weak self] in
-            while !Task.isCancelled {
-                let rows = await Self.fetch(kind: kind)
-                if Task.isCancelled { return }
-                self?.rows = rows
-                self?.loaded = true
-                try? await Task.sleep(for: .seconds(2))
+        let cancellation = CancellationToken()
+        self.cancellation = cancellation
+        rows = []
+        loaded = false
+        task = Task { [weak self, cancellation] in
+            defer {
+                Task { @MainActor [weak self] in
+                    guard self?.cancellation === cancellation else { return }
+                    self?.task = nil
+                    self?.cancellation = nil
+                }
+            }
+            var failures = 0
+            while !Task.isCancelled && !cancellation.isCancelled {
+                let fetchedRows = await Self.fetch(kind: kind)
+                guard !Task.isCancelled && !cancellation.isCancelled else { return }
+                if let fetchedRows {
+                    self?.rows = fetchedRows
+                    self?.loaded = true
+                    failures = 0
+                    try? await Task.sleep(for: .seconds(2))
+                } else {
+                    failures += 1
+                    self?.rows = []
+                    self?.loaded = failures >= 3
+                    if failures >= 3 { return }
+                    try? await Task.sleep(for: .seconds(RetryBackoff.delay(failureCount: failures, base: 2)))
+                }
             }
         }
     }
 
     func stop() {
+        cancellation?.cancel()
         task?.cancel()
         task = nil
+        cancellation = nil
     }
 
-    private static func fetch(kind: MetricKind) async -> [ProcRow] {
+    private static func fetch(kind: MetricKind) async -> [ProcRow]? {
         let args = kind == .cpu
             ? ["-Aceo", "pid=,pcpu=,comm=", "-r"]
             : ["-Aceo", "pid=,rss=,comm=", "-m"]
-        guard let out = await Shell.run("/bin/ps", args, timeout: 1.5) else { return [] }
+        guard let out = await Shell.run("/bin/ps", args, timeout: 1.5) else { return nil }
         return parse(out, kind: kind, limit: 5)
     }
 

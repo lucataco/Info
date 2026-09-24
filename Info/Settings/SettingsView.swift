@@ -66,7 +66,7 @@ private struct MetricsTab: View {
             } header: {
                 Text("Extras")
             } footer: {
-                Text("All off by default. These only run while a panel is open.")
+                Text("All off by default. These only run while a panel is open; public IP and latency contact external hosts.")
             }
         }
         .formStyle(.grouped)
@@ -93,7 +93,7 @@ private struct MenuBarTab: View {
             Section("Appearance") {
                 Picker("Label", selection: Binding(
                     get: { prefs.menuBarLabel },
-                    set: { prefs.menuBarLabel = $0; onStyleChanged() }
+                    set: { setLabel($0) }
                 )) {
                     ForEach(MenuBarLabelStyle.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -136,7 +136,7 @@ private struct MenuBarTab: View {
 
                 Toggle(isOn: Binding(
                     get: { prefs.showMenuBarValue },
-                    set: { prefs.showMenuBarValue = $0; onStyleChanged() }
+                    set: { setShowValue($0) }
                 )) {
                     Text("Show value")
                     Text("Displays percentage or network speed in the menu bar.")
@@ -145,7 +145,7 @@ private struct MenuBarTab: View {
 
                 Toggle(isOn: Binding(
                     get: { prefs.showMenuBarSparkline },
-                    set: { prefs.showMenuBarSparkline = $0; onStyleChanged() }
+                    set: { setShowGraph($0) }
                 )) {
                     Text("Show graph")
                     Text("Wide graph items may not fit on crowded menu bars.")
@@ -154,6 +154,30 @@ private struct MenuBarTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func setLabel(_ label: MenuBarLabelStyle) {
+        prefs.menuBarLabel = label
+        if label == .none && !prefs.showMenuBarValue && !prefs.showMenuBarSparkline {
+            prefs.showMenuBarValue = true
+        }
+        onStyleChanged()
+    }
+
+    private func setShowValue(_ show: Bool) {
+        prefs.showMenuBarValue = show
+        if !show && prefs.menuBarLabel == .none && !prefs.showMenuBarSparkline {
+            prefs.showMenuBarSparkline = true
+        }
+        onStyleChanged()
+    }
+
+    private func setShowGraph(_ show: Bool) {
+        prefs.showMenuBarSparkline = show
+        if !show && prefs.menuBarLabel == .none && !prefs.showMenuBarValue {
+            prefs.showMenuBarValue = true
+        }
+        onStyleChanged()
     }
 }
 
@@ -173,7 +197,9 @@ private struct MenuBarPreviewStrip: View {
                 ForEach(prefs.enabledMetrics) { kind in
                     MenuBarItemPreview(kind: kind,
                                        style: prefs.menuBarStyle,
-                                       data: MenuBarItemData.current(for: kind, state: state))
+                                       data: MenuBarItemData.current(for: kind,
+                                                                         state: state,
+                                                                         includeHistory: prefs.menuBarStyle.showSparkline))
                 }
             }
         }
@@ -280,7 +306,7 @@ private struct GeneralTab: View {
                 LabeledContent("Made by") {
                     Link("Catacolabs", destination: Self.catacolabsURL)
                 }
-                Link("Privacy — everything stays on your Mac", destination: Self.privacyURL)
+                Link("Privacy — metrics stay on your Mac", destination: Self.privacyURL)
                     .font(.callout)
                 HStack {
                     Spacer()

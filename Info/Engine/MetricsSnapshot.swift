@@ -1,5 +1,40 @@
 import Foundation
 
+struct HistoryPoint: Sendable, Equatable {
+    var value: Double
+    var timestamp: Date
+}
+
+enum MetricAvailability: Sendable, Equatable {
+    case disabled
+    case loading
+    case live
+    case stale
+    case unavailable
+}
+
+struct MetricStatus: Sendable, Equatable {
+    var availability: MetricAvailability
+    var updatedAt: Date?
+
+    static let loading = MetricStatus(availability: .loading, updatedAt: nil)
+    static let disabled = MetricStatus(availability: .disabled, updatedAt: nil)
+    static let unavailable = MetricStatus(availability: .unavailable, updatedAt: nil)
+
+    static func live(at date: Date) -> MetricStatus {
+        MetricStatus(availability: .live, updatedAt: date)
+    }
+
+    static func stale(since date: Date?) -> MetricStatus {
+        MetricStatus(availability: .stale, updatedAt: date)
+    }
+
+    var isLive: Bool { availability == .live }
+    var isLoading: Bool { availability == .loading }
+    var isStale: Bool { availability == .stale }
+    var isUnavailable: Bool { availability == .unavailable }
+}
+
 // MARK: - Per-metric samples (all Sendable value types)
 
 struct CPUSample: Sendable, Equatable {
@@ -13,7 +48,7 @@ struct CPUSample: Sendable, Equatable {
 }
 
 enum MemoryPressure: Sendable, Equatable {
-    case normal, warning, critical
+    case normal, warning, critical, unavailable
 }
 
 struct MemorySample: Sendable, Equatable {
@@ -55,11 +90,26 @@ struct NetworkSample: Sendable, Equatable {
 /// One tick's worth of all metrics. Any field may be nil if that collector
 /// could not produce a value this tick (e.g. first sample, missing hardware).
 struct MetricsSnapshot: Sendable {
+    var timestamp: Date
     var enabledMetrics: Set<MetricKind>
     var cpu: CPUSample?
     var memory: MemorySample?
     var gpu: GPUSample?
     var network: NetworkSample?
+
+    init(timestamp: Date = Date(),
+         enabledMetrics: Set<MetricKind>,
+         cpu: CPUSample?,
+         memory: MemorySample?,
+         gpu: GPUSample?,
+         network: NetworkSample?) {
+        self.timestamp = timestamp
+        self.enabledMetrics = enabledMetrics
+        self.cpu = cpu
+        self.memory = memory
+        self.gpu = gpu
+        self.network = network
+    }
 }
 
 // MARK: - Pure math (unit-testable, no system calls)

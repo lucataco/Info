@@ -8,41 +8,64 @@ struct MenuBarItemData: Equatable, Sendable {
     var download: [Double] = []
     var upload: [Double] = []
     var lines: [String] = []
+    var accessibilityLines: [String] = []
+
+    private static func spoken(_ value: String, status: MetricStatus) -> String {
+        switch status.availability {
+        case .disabled: return "disabled"
+        case .loading: return "loading"
+        case .unavailable: return "unavailable"
+        case .stale: return "\(value), stale"
+        case .live: return value
+        }
+    }
 
     /// Builds the current display data for `kind` from live sampling state.
     @MainActor
-    static func current(for kind: MetricKind, state: SamplingState) -> MenuBarItemData {
+    static func current(for kind: MetricKind,
+                        state: SamplingState,
+                        includeHistory: Bool = true) -> MenuBarItemData {
         switch kind {
         case .cpu:
             return MenuBarItemData(
-                single: state.cpuHistory.values,
-                lines: [state.cpu.map { Fmt.percent($0.total) } ?? "—"])
+                single: includeHistory ? state.cpuValues : [],
+                lines: [state.cpu.map { Fmt.percent($0.total) } ?? "—"],
+                accessibilityLines: [Self.spoken(state.cpu.map { Fmt.percent($0.total) } ?? "unavailable",
+                                                status: state.cpuStatus)])
         case .gpu:
             return MenuBarItemData(
-                single: state.gpuHistory.values,
-                lines: [state.gpu.map { Fmt.percent($0.utilization) } ?? "—"])
+                single: includeHistory ? state.gpuValues : [],
+                lines: [state.gpu.map { Fmt.percent($0.utilization) } ?? "—"],
+                accessibilityLines: [Self.spoken(state.gpu.map { Fmt.percent($0.utilization) } ?? "unavailable",
+                                                status: state.gpuStatus)])
         case .memory:
             return MenuBarItemData(
-                single: state.memoryHistory.values,
-                lines: [state.memory.map { Fmt.percent($0.usage) } ?? "—"])
+                single: includeHistory ? state.memoryValues : [],
+                lines: [state.memory.map { Fmt.percent($0.usage) } ?? "—"],
+                accessibilityLines: [Self.spoken(state.memory.map { Fmt.percent($0.usage) } ?? "unavailable",
+                                                status: state.memoryStatus)])
         case .network:
             let down = state.network.map { Fmt.rateShort($0.downloadBytesPerSec) } ?? "—"
             let upRate = state.network.map { Fmt.rateShort($0.uploadBytesPerSec) } ?? "—"
             return MenuBarItemData(
-                download: state.netDownHistory.values,
-                upload: state.netUpHistory.values,
-                lines: ["\u{2193}\(down)", "\u{2191}\(upRate)"])
+                download: includeHistory ? state.netDownValues : [],
+                upload: includeHistory ? state.netUpValues : [],
+                lines: ["\u{2193}\(down)", "\u{2191}\(upRate)"],
+                accessibilityLines: [
+                    Self.spoken(state.network.map { "download \(Fmt.rate($0.downloadBytesPerSec))" } ?? "download unavailable",
+                                status: state.networkStatus),
+                    Self.spoken(state.network.map { "upload \(Fmt.rate($0.uploadBytesPerSec))" } ?? "upload unavailable",
+                                status: state.networkStatus),
+                ])
         }
     }
 
     /// VoiceOver-friendly reading of the current value(s), e.g. "23%" or
-    /// "down 1.5M, up 240K".
+    /// "download 1.5 MB/s, upload 240 KB/s".
     var accessibilityValue: String {
-        guard !lines.isEmpty else { return "—" }
-        return lines
-            .map { $0.replacingOccurrences(of: "\u{2193}", with: "down ")
-                     .replacingOccurrences(of: "\u{2191}", with: "up ") }
-            .joined(separator: ", ")
+        let values = accessibilityLines.isEmpty ? lines : accessibilityLines
+        guard !values.isEmpty else { return "unavailable" }
+        return values.joined(separator: ", ")
     }
 }
 

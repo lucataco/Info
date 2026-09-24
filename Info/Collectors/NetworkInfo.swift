@@ -1,39 +1,54 @@
 import Foundation
 import Darwin
 
-/// On-demand network details that are cheap and local (no external requests).
+@MainActor
 enum NetworkInfo {
-    /// First non-loopback local address, preferring IPv4 and falling back to IPv6.
-    static func localAddress(interface: String? = nil) -> String? {
-        localIPv4(interface: interface) ?? localIPv6(interface: interface)
+    private struct CacheEntry {
+        let value: String?
+        let storedAt: Date
     }
 
-    /// First non-loopback IPv4 address, or nil.
+    private static var cache: [String: CacheEntry] = [:]
+    private static let cacheLifetime: TimeInterval = 30
+
+    static func localAddress(interface: String? = nil) -> String? {
+        let key = interface ?? "*"
+        let now = Date()
+        if let entry = cache[key], now.timeIntervalSince(entry.storedAt) < cacheLifetime {
+            return entry.value
+        }
+
+        let value = localIPv4(interface: interface) ?? localIPv6(interface: interface)
+        if let value {
+            cache[key] = CacheEntry(value: value, storedAt: now)
+        }
+        return value
+    }
+
     static func localIPv4(interface: String? = nil) -> String? {
         localAddress(interface: interface, family: AF_INET)
     }
 
-    /// First non-loopback IPv6 address, or nil.
     static func localIPv6(interface: String? = nil) -> String? {
         localAddress(interface: interface, family: AF_INET6)
     }
 
     private static func localAddress(interface: String?, family: Int32) -> String? {
-        var addrs: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&addrs) == 0 else { return nil }
-        defer { freeifaddrs(addrs) }
+        var addresses: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&addresses) == 0 else { return nil }
+        defer { freeifaddrs(addresses) }
 
-        var cursor = addrs
+        var cursor = addresses
         while let entry = cursor {
             defer { cursor = entry.pointee.ifa_next }
             let name = String(cString: entry.pointee.ifa_name)
             if name == "lo0" { continue }
             if let interface, name != interface { continue }
-            guard let addr = entry.pointee.ifa_addr,
-                  addr.pointee.sa_family == UInt8(family) else { continue }
+            guard let address = entry.pointee.ifa_addr,
+                  address.pointee.sa_family == UInt8(family) else { continue }
 
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            let result = getnameinfo(addr, socklen_t(addr.pointee.sa_len),
+            let result = getnameinfo(address, socklen_t(address.pointee.sa_len),
                                      &host, socklen_t(host.count),
                                      nil, 0, NI_NUMERICHOST)
             if result == 0 {

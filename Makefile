@@ -35,7 +35,7 @@ NOTARY_PROFILE ?=
 
 XCODE_SIGNING = CODE_SIGN_STYLE="$(CODE_SIGN_STYLE)" CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)"
 
-.PHONY: all generate icon build dmg zip release verify notarize run test lint clean
+.PHONY: all generate icon build dmg zip release verify notarize run test test-unit lint ci clean
 
 all: dmg
 
@@ -64,7 +64,7 @@ zip: build
 release:
 	./tools/release.sh $(VERSION)
 
-verify: dmg
+verify: lint test dmg
 	codesign --verify --deep --strict --verbose=2 "$(APP_PATH)"
 	hdiutil verify "$(DMG)"
 	@if spctl -a -vv --type execute "$(APP_PATH)"; then \
@@ -89,12 +89,18 @@ test: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
 		-destination 'platform=macOS' test
 
+test-unit: generate
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		-destination 'platform=macOS' test -only-testing:InfoTests
+
+ci: lint test build
+
 lint:
 	@if ! command -v swiftlint >/dev/null 2>&1; then \
 		echo "SwiftLint is not installed. Install with: brew install swiftlint"; \
 		exit 1; \
 	fi
-	swiftlint lint --config .swiftlint.yml
+	swiftlint lint --strict --config .swiftlint.yml
 
 clean:
 	rm -rf $(BUILD_DIR)

@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-24
+
+### Fixed
+- Improved accessibility labels, status announcements, and onboarding detection.
+- Preserved last-known metric readings during transient collector failures.
+- Added timestamp-aware history charts and explicit stale/unavailable states.
+- Paused optional work while inactive, asleep, or screen-locked.
+- Added bounded retries, safer network requests, and cached system lookups.
+- Hardened release signing, notarization, provenance, and quality gates.
+
 ## [0.5.0] — 2026-07-15
 
 ### Added

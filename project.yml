@@ -33,8 +33,8 @@ targets:
         INFOPLIST_FILE: Info/Resources/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.info.app
         PRODUCT_NAME: Info
-        MARKETING_VERSION: "0.5.0"
-        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "0.5.1"
+        CURRENT_PROJECT_VERSION: "11"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: "YES"
@@ -55,6 +55,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.info.app.tests
         GENERATE_INFOPLIST_FILE: "YES"
 
+  InfoUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - UITests
+    dependencies:
+      - target: Info
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.info.app.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+
 schemes:
   Info:
     build:
@@ -65,3 +77,4 @@ schemes:
     test:
       targets:
         - InfoTests
+        - InfoUITests

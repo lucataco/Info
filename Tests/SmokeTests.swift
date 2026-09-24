@@ -195,7 +195,10 @@ import Foundation
     }
 
     @Test func emptyEnabledSetRunsNoCollectors() {
-        final class Counter { var count = 0 }
+        final class Counter {
+            var count = 0
+            var isEmpty: Bool { count < 1 }
+        }
         let counter = Counter()
         let collectors = MetricCollectors(
             cpu: { counter.count += 1; return nil },
@@ -204,28 +207,34 @@ import Foundation
             network: { counter.count += 1; return nil }
         )
         _ = collectors.sample(enabledMetrics: [])
-        #expect(counter.count == 0)
+        #expect(counter.isEmpty)
     }
 }
 
 @Suite struct SamplingStateTests {
-    @Test @MainActor func clearsEnabledMetricWhenCollectorFails() {
+    @Test @MainActor func preservesLastGoodMetricWhenCollectorFails() {
+        let timestamp = Date(timeIntervalSince1970: 100)
         let state = SamplingState()
         state.ingest(MetricsSnapshot(
+            timestamp: timestamp,
             enabledMetrics: [.cpu],
             cpu: CPUSample(total: 0.5, system: 0.2, user: 0.3, idle: 0.5, perCore: []),
             memory: nil,
             gpu: nil,
             network: nil))
         #expect(state.cpu != nil)
+        #expect(state.cpuStatus.availability == .live)
         #expect(!state.cpuHistory.isEmpty)
 
-        state.ingest(MetricsSnapshot(enabledMetrics: [.cpu], cpu: nil, memory: nil, gpu: nil, network: nil))
-        #expect(state.cpu == nil)
-        #expect(state.cpuHistory.isEmpty)
+        state.ingest(MetricsSnapshot(
+            timestamp: timestamp.addingTimeInterval(2),
+            enabledMetrics: [.cpu], cpu: nil, memory: nil, gpu: nil, network: nil))
+        #expect(state.cpu != nil)
+        #expect(state.cpuStatus.availability == .stale)
+        #expect(!state.cpuHistory.isEmpty)
     }
 
-    @Test @MainActor func disabledMetricDoesNotClearExistingValue() {
+    @Test @MainActor func disabledMetricClearsExistingValue() {
         let state = SamplingState()
         state.ingest(MetricsSnapshot(
             enabledMetrics: [.cpu],
@@ -235,8 +244,9 @@ import Foundation
             network: nil))
 
         state.ingest(MetricsSnapshot(enabledMetrics: [], cpu: nil, memory: nil, gpu: nil, network: nil))
-        #expect(state.cpu != nil)
-        #expect(!state.cpuHistory.isEmpty)
+        #expect(state.cpu == nil)
+        #expect(state.cpuStatus.availability == .disabled)
+        #expect(state.cpuHistory.isEmpty)
     }
 }
 
@@ -371,6 +381,7 @@ import Foundation
 final class SnapshotRecorder {
     private(set) var snapshots: [MetricsSnapshot] = []
     var count: Int { snapshots.count }
+    var isEmpty: Bool { snapshots.isEmpty }
     func record(_ snapshot: MetricsSnapshot) { snapshots.append(snapshot) }
 }
 
@@ -442,7 +453,7 @@ final class SnapshotRecorder {
         }
         engine.start()
         try await Task.sleep(for: .milliseconds(400))
-        #expect(recorder.count == 0)
+        #expect(recorder.isEmpty)
         engine.stop()
     }
 
@@ -470,7 +481,7 @@ final class SnapshotRecorder {
         }
         engine.start()
         try await Task.sleep(for: .milliseconds(300))
-        #expect(recorder.count == 0)
+        #expect(recorder.isEmpty)
 
         engine.setInterval(0.05)
         try await Task.sleep(for: .milliseconds(500))
@@ -508,5 +519,87 @@ final class SnapshotRecorder {
         try await Task.sleep(for: .milliseconds(350))
         #expect(recorder.count > countAfterFirstRun)
         engine.stop()
+    }
+}
+
+@Suite struct HistorySemanticsTests {
+    @Test func timeAxisUsesSampleTimestamps() {
+        let start = Date(timeIntervalSince1970: 100)
+        let samples = [
+            HistoryPoint(value: 0.1, timestamp: start),
+            HistoryPoint(value: 0.2, timestamp: start.addingTimeInterval(2)),
+            HistoryPoint(value: 0.3, timestamp: start.addingTimeInterval(15)),
+        ]
+        #expect(TimeAxis.span(samples: samples) == "15s")
+        #expect(TimeAxis.ago(samplesBack: 2, samples: samples, reference: start.addingTimeInterval(15)) == "15s ago")
+    }
+
+    @Test @MainActor func stateStoresTimestampedHistory() {
+        let state = SamplingState()
+        let timestamp = Date(timeIntervalSince1970: 200)
+        state.ingest(MetricsSnapshot(
+            timestamp: timestamp,
+            enabledMetrics: [.cpu],
+            cpu: CPUSample(total: 0.4, system: 0.1, user: 0.3, idle: 0.6, perCore: []),
+            memory: nil, gpu: nil, network: nil))
+        #expect(state.cpuHistory.values.last?.timestamp == timestamp)
+        #expect(state.cpuValues == [0.4])
+    }
+}
+
+@Suite struct UtilityTests {
+    @Test func cancellationTokenIsThreadSafe() async {
+        let token = CancellationToken()
+        #expect(!token.isCancelled)
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    token.cancel()
+                }
+            }
+        }
+        #expect(token.isCancelled)
+    }
+
+    @Test func retryBackoffIsBounded() {
+        #expect(RetryBackoff.delay(failureCount: 0, base: 5) == 5)
+        #expect(RetryBackoff.delay(failureCount: 1, base: 5) == 5)
+        #expect(RetryBackoff.delay(failureCount: 2, base: 5) == 10)
+        #expect(RetryBackoff.delay(failureCount: 20, base: 5, maximum: 60) == 60)
+    }
+
+    @Test @MainActor func menuBarAccessibilityIncludesNetworkUnits() {
+        let state = SamplingState()
+        state.ingest(MetricsSnapshot(
+            enabledMetrics: [.network],
+            cpu: nil,
+            memory: nil,
+            gpu: nil,
+            network: NetworkSample(interface: "en0", uploadBytesPerSec: 1024,
+                                   downloadBytesPerSec: 2048, totalUploaded: 0, totalDownloaded: 0)))
+        let data = MenuBarItemData.current(for: .network, state: state, includeHistory: false)
+        #expect(data.accessibilityValue.contains("download 2.0 KB/s"))
+        #expect(data.download.isEmpty)
+    }
+
+    @Test @MainActor func invalidMenuBarStyleIsRepaired() {
+        let defaults = UserDefaults(suiteName: "test.\(UUID().uuidString)")!
+        defaults.set(false, forKey: "menuBarValue")
+        defaults.set(false, forKey: "menuBarSparkline")
+        defaults.set("none", forKey: "menuBarLabel")
+        let prefs = Preferences(defaults: defaults)
+        #expect(prefs.showMenuBarValue)
+    }
+
+    @Test @MainActor func activityStateGatesOptionalWork() {
+        let activity = AppActivityState()
+        #expect(activity.shouldRunOptionalWork)
+        activity.setSleeping(true)
+        #expect(!activity.shouldRunOptionalWork)
+        activity.setSleeping(false)
+        activity.setScreenLocked(true)
+        #expect(!activity.shouldRunOptionalWork)
+        activity.setScreenLocked(false)
+        #expect(activity.shouldRunOptionalWork)
     }
 }

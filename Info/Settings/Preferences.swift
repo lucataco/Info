@@ -88,6 +88,10 @@ final class Preferences {
         menuBarTextSize = MenuBarTextSize(rawValue: defaults.string(forKey: Keys.menuBarTextSize) ?? "") ?? .medium
         menuBarSpacing = MenuBarSpacing(rawValue: defaults.string(forKey: Keys.menuBarSpacing) ?? "") ?? .compact
         menuBarLayout = MenuBarLayout(rawValue: defaults.string(forKey: Keys.menuBarLayout) ?? "") ?? .inline
+        if menuBarLabel == .none && !showMenuBarValue && !showMenuBarSparkline {
+            showMenuBarValue = true
+            defaults.set(true, forKey: Keys.menuBarValue)
+        }
     }
 
     func isEnabled(_ kind: MetricKind) -> Bool { enabledMetrics.contains(kind) }
