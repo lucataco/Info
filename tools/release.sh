@@ -93,9 +93,11 @@ if [ "${SKIP_TAP:-0}" != "1" ]; then
     || err "tap must be synchronized with $TAP_UPSTREAM before releasing"
 fi
 
-note "Running lint and tests"
+note "Running lint and unit tests"
 make lint
-make test
+make test-unit
+note "Building test bundles"
+make build-for-testing
 
 # --- Build -----------------------------------------------------------------
 note "Building Release $APP_NAME.app"

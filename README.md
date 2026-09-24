@@ -64,7 +64,10 @@ make ci
 ```
 
 Ad-hoc local builds are expected to fail Gatekeeper assessment on other Macs. Public
-releases must use Developer ID signing and notarization.
+releases must use Developer ID signing and notarization. `make test` runs the full
+unit/UI suite interactively; the UI-test runner may require macOS Automation/Accessibility
+consent. Release and CI use `make test-unit` and `make build-for-testing` to validate the
+suite without that local consent.
 
 ## Notarize
 
@@ -85,7 +88,8 @@ Releases are published to the [`lucataco/homebrew-tap`](https://github.com/lucat
 
 1. Bump `MARKETING_VERSION` (and `CURRENT_PROJECT_VERSION`) in `project.yml`, then commit and push.
 2. Cut the release with a Developer ID identity and team. The release script runs lint,
-   tests, verifies the built bundle version, and publishes from the exact source commit:
+   unit tests, builds the UI-test bundle, verifies the built bundle version, and publishes
+   from the exact source commit:
 
    ```sh
    make release CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" DEVELOPMENT_TEAM=TEAMID NOTARY_PROFILE=your-notarytool-profile

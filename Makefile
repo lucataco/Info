@@ -9,7 +9,9 @@
 #   make run      build + launch
 #   make zip      build + zip Info.app for distribution
 #   make release  cut a GitHub release + update the Homebrew tap
-#   make test     run unit tests
+#   make test     run unit and UI tests interactively
+#   make test-unit run unit tests only
+#   make build-for-testing build unit and UI test bundles
 #   make lint     run SwiftLint (install: brew install swiftlint)
 #   make clean    remove build artifacts
 #
@@ -35,7 +37,7 @@ NOTARY_PROFILE ?=
 
 XCODE_SIGNING = CODE_SIGN_STYLE="$(CODE_SIGN_STYLE)" CODE_SIGN_IDENTITY="$(CODE_SIGN_IDENTITY)" DEVELOPMENT_TEAM="$(DEVELOPMENT_TEAM)"
 
-.PHONY: all generate icon build dmg zip release verify notarize run test test-unit lint ci clean
+.PHONY: all generate icon build dmg zip release verify notarize run test test-unit build-for-testing lint ci clean
 
 all: dmg
 
@@ -64,7 +66,7 @@ zip: build
 release:
 	./tools/release.sh $(VERSION)
 
-verify: lint test dmg
+verify: lint test-unit build-for-testing dmg
 	codesign --verify --deep --strict --verbose=2 "$(APP_PATH)"
 	hdiutil verify "$(DMG)"
 	@if spctl -a -vv --type execute "$(APP_PATH)"; then \
@@ -87,13 +89,17 @@ run: build
 
 test: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
-		-destination 'platform=macOS' test
+		$(XCODE_SIGNING) -destination 'platform=macOS' test
 
 test-unit: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
-		-destination 'platform=macOS' test -only-testing:InfoTests
+		$(XCODE_SIGNING) -destination 'platform=macOS' test -only-testing:InfoTests
 
-ci: lint test build
+build-for-testing: generate
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+		$(XCODE_SIGNING) -destination 'platform=macOS' build-for-testing
+
+ci: lint test-unit build-for-testing build
 
 lint:
 	@if ! command -v swiftlint >/dev/null 2>&1; then \
