@@ -95,9 +95,9 @@ fi
 
 note "Running lint and unit tests"
 make lint
-make test-unit
+make CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test-unit
 note "Building test bundles"
-make build-for-testing
+make CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build-for-testing
 
 # --- Build -----------------------------------------------------------------
 note "Building Release $APP_NAME.app"
