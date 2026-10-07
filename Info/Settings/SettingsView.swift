@@ -5,6 +5,8 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var prefs: Preferences
     let state: SamplingState
+    /// Live on-screen order of the status items, for the Menu Bar preview.
+    var menuBarOrder: () -> [MetricKind]
     var onMetricsChanged: () -> Void
     var onIntervalChanged: () -> Void
     var onStyleChanged: () -> Void
@@ -15,7 +17,8 @@ struct SettingsView: View {
             MetricsTab(prefs: prefs, onMetricsChanged: onMetricsChanged)
                 .tabItem { Label("Metrics", systemImage: "square.grid.2x2") }
 
-            MenuBarTab(prefs: prefs, state: state, onStyleChanged: onStyleChanged)
+            MenuBarTab(prefs: prefs, state: state, menuBarOrder: menuBarOrder,
+                       onStyleChanged: onStyleChanged)
                 .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
 
             GeneralTab(prefs: prefs,
@@ -23,7 +26,7 @@ struct SettingsView: View {
                        onAppearanceChanged: onAppearanceChanged)
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
-        .frame(width: 440, height: 480)
+        .frame(width: 440, height: 560)
     }
 }
 
@@ -42,6 +45,7 @@ private struct MetricsTab: View {
                         set: { prefs.setEnabled(kind, $0); onMetricsChanged() }
                     )) {
                         Label(kind.title, systemImage: kind.symbolName)
+                            .labelStyle(.fixedIcon)
                     }
                     .accessibilityLabel("Show \(kind.title) in menu bar")
                 }
@@ -55,7 +59,7 @@ private struct MetricsTab: View {
                 .accessibilityLabel("CPU and GPU temperature")
                 Toggle(isOn: $prefs.showConnectivity) {
                     Text("Connectivity latency")
-                    Text("Measures ping only while the Network panel is open.")
+                    Text("Times a quick HTTPS request only while the Network panel is open.")
                 }
                 .accessibilityLabel("Connectivity latency")
                 Toggle(isOn: $prefs.showPublicIP) {
@@ -78,12 +82,13 @@ private struct MetricsTab: View {
 private struct MenuBarTab: View {
     @Bindable var prefs: Preferences
     let state: SamplingState
+    var menuBarOrder: () -> [MetricKind]
     var onStyleChanged: () -> Void
 
     var body: some View {
         Form {
             Section {
-                MenuBarPreviewStrip(prefs: prefs, state: state)
+                MenuBarPreviewStrip(prefs: prefs, state: state, menuBarOrder: menuBarOrder)
             } header: {
                 Text("Preview")
             } footer: {
@@ -186,6 +191,17 @@ private struct MenuBarTab: View {
 private struct MenuBarPreviewStrip: View {
     @Bindable var prefs: Preferences
     let state: SamplingState
+    var menuBarOrder: () -> [MetricKind]
+
+    /// Enabled metrics in the user's real menu bar arrangement; anything not
+    /// placed yet (just enabled) keeps its canonical spot at the end.
+    private var orderedMetrics: [MetricKind] {
+        let order = menuBarOrder()
+        let rank = { (kind: MetricKind) in order.firstIndex(of: kind) ?? order.count }
+        return prefs.enabledMetrics.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -194,7 +210,7 @@ private struct MenuBarPreviewStrip: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(prefs.enabledMetrics) { kind in
+                ForEach(orderedMetrics) { kind in
                     MenuBarItemPreview(kind: kind,
                                        style: prefs.menuBarStyle,
                                        data: MenuBarItemData.current(for: kind,

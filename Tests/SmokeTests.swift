@@ -582,6 +582,14 @@ final class SnapshotRecorder {
         #expect(data.download.isEmpty)
     }
 
+    @Test func sparklineCeilingStepsWithPeak() {
+        #expect(MenuBarItemView.sparklineCeiling(for: []) == 0.25)
+        #expect(MenuBarItemView.sparklineCeiling(for: [0.1, 0.2]) == 0.25)
+        #expect(MenuBarItemView.sparklineCeiling(for: [0.1, 0.23]) == 0.5)
+        #expect(MenuBarItemView.sparklineCeiling(for: [0.2, 0.4]) == 0.5)
+        #expect(MenuBarItemView.sparklineCeiling(for: [0.2, 0.75]) == 1)
+    }
+
     @Test @MainActor func invalidMenuBarStyleIsRepaired() {
         let defaults = UserDefaults(suiteName: "test.\(UUID().uuidString)")!
         defaults.set(false, forKey: "menuBarValue")

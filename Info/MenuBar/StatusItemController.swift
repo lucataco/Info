@@ -25,6 +25,12 @@ final class StatusItemController {
     private var popoverWindow: NSPanel?
     private var popoverKind: MetricKind?
     private var popoverPinned = false
+    /// The popover most recently closed by an outside click or focus loss. On
+    /// macOS 26 the status bar is hosted out of process, so clicking an item
+    /// first reaches the global monitor (and resigns the panel's key status)
+    /// before the button's mouse-up action runs. Remembering the dismissal lets
+    /// that action treat the click as "close" instead of reopening.
+    private var recentDismissal: (kind: MetricKind, at: Date)?
     private var localEventMonitor: Any?
     private var globalEventMonitor: Any?
     private var popoverNotificationTokens: [NSObjectProtocol] = []
@@ -39,6 +45,13 @@ final class StatusItemController {
 
     /// Current status items (used by onboarding to check menu-bar visibility).
     var statusItems: [NSStatusItem] { bars.map(\.item) + [fallbackItem].compactMap { $0 } }
+
+    /// Enabled metrics in the order they actually appear in the menu bar, which
+    /// the user can rearrange by ⌘-dragging (used by the Settings preview).
+    var menuBarOrder: [MetricKind] {
+        bars.sorted { ($0.item.button?.window?.frame.minX ?? 0) < ($1.item.button?.window?.frame.minX ?? 0) }
+            .map(\.kind)
+    }
 
     func install(state: SamplingState, prefs: Preferences, metrics: [MetricKind] = MetricKind.allCases) {
         self.state = state
@@ -198,6 +211,11 @@ final class StatusItemController {
             closePopover()
             return
         }
+        if let dismissal = recentDismissal, dismissal.kind == bar.kind,
+           Date().timeIntervalSince(dismissal.at) < 0.5 {
+            recentDismissal = nil
+            return
+        }
         guard let state, let prefs else { return }
         closePopover()
 
@@ -211,13 +229,20 @@ final class StatusItemController {
                 self?.popoverPinned = pinned
             })
         let hosting = NSHostingController(rootView: panelView)
+        // The transparent title bar would otherwise inset the content by its
+        // height, leaving a dead band above the panel header.
+        hosting.safeAreaRegions = []
         let fitting = hosting.sizeThatFits(in: NSSize(width: MetricPanel.panelWidth,
                                                       height: .greatestFiniteMagnitude))
         let size = Self.popoverSize(fitting: fitting, width: MetricPanel.panelWidth)
+        // Non-activating: the panel can take key focus (so Escape and
+        // VoiceOver reach it) without activating Info, so the user's app stays
+        // active.
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
-                            styleMask: [.titled, .fullSizeContentView],
+                            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
                             backing: .buffered,
                             defer: false)
+        panel.title = "\(bar.kind.title) details" // hidden, but read by VoiceOver
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isReleasedWhenClosed = false
@@ -230,7 +255,7 @@ final class StatusItemController {
         position(panel, below: button)
         installDismissMonitors()
         installPopoverNotifications(for: panel)
-        panel.orderFrontRegardless()
+        panel.makeKeyAndOrderFront(nil)
         clampToVisibleScreen(panel, fallback: button.window?.screen)
         DispatchQueue.main.async { [weak panel, fallback = button.window?.screen] in
             guard let panel else { return }
@@ -239,6 +264,8 @@ final class StatusItemController {
 
         popoverWindow = panel
         popoverKind = bar.kind
+        // Show the item as selected while its panel is open, like a menu.
+        bar.view.isSelected = true
     }
 
     private func position(_ panel: NSPanel, below button: NSStatusBarButton) {
@@ -332,6 +359,9 @@ final class StatusItemController {
     }
 
     private func closePopover() {
+        if let popoverKind {
+            bars.first { $0.kind == popoverKind }?.view.isSelected = false
+        }
         popoverWindow?.close()
         popoverWindow = nil
         popoverKind = nil
@@ -387,8 +417,9 @@ final class StatusItemController {
     /// Outside clicks and focus loss only dismiss an unpinned popover. Escape,
     /// clicking the status item again, and disabling the metric always close.
     private func closePopoverUnlessPinned() {
-        guard !popoverPinned else { return }
+        guard !popoverPinned, let kind = popoverKind else { return }
         closePopover()
+        recentDismissal = (kind, Date())
     }
 
     private func removeDismissMonitors() {

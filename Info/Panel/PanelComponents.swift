@@ -34,6 +34,23 @@ struct NoDataLabel: View {
     }
 }
 
+/// Label with a fixed-width icon column, so titles line up even though the
+/// metric SF Symbols have different widths.
+struct FixedIconLabelStyle: LabelStyle {
+    var iconWidth: CGFloat = 20
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 8) {
+            configuration.icon.frame(width: iconWidth)
+            configuration.title
+        }
+    }
+}
+
+extension LabelStyle where Self == FixedIconLabelStyle {
+    static var fixedIcon: FixedIconLabelStyle { FixedIconLabelStyle() }
+}
+
 /// A circular gauge with the percentage in the middle.
 struct Ring: View {
     let fraction: Double
@@ -50,6 +67,8 @@ struct Ring: View {
                 .stroke(tint ?? Theme.usage(fraction),
                         style: StrokeStyle(lineWidth: 6, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                // A near-zero arc with round caps renders as a stray dot.
+                .opacity(fraction >= 0.005 ? 1 : 0)
             VStack(spacing: 0) {
                 Text(displayValue ?? Fmt.percent(fraction))
                     .font(.system(.headline, design: .rounded)).monospacedDigit()
@@ -108,6 +127,11 @@ private func hoverSampleIndex(location: CGPoint,
     }
 }
 
+/// Gap between a chart's readout, plot, and time caption. The centered
+/// 100%/0% axis labels overhang the plot by half a line, so this must be
+/// roomy enough for them to clear the text above and below.
+private let chartSectionSpacing: CGFloat = 8
+
 /// A thin caption that frames the X axis as a time range ("2m ago … now").
 private struct TimeAxisCaption: View {
     let samples: [HistoryPoint]
@@ -148,7 +172,7 @@ struct HistoryChart: View {
 
     var body: some View {
         if showsDetail {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: chartSectionSpacing) {
                 readout
                 chart
                 TimeAxisCaption(samples: samples)
@@ -273,7 +297,7 @@ struct DualHistoryChart: View {
 
     var body: some View {
         if showsDetail {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: chartSectionSpacing) {
                 readout
                 chart
                 TimeAxisCaption(samples: visibleSamples)

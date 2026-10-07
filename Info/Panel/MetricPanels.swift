@@ -89,7 +89,7 @@ private struct NetworkHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Label("Network", systemImage: "network")
+            Label(MetricKind.network.title, systemImage: MetricKind.network.symbolName)
                 .font(.headline)
             Spacer()
             Text(statusText)
@@ -146,7 +146,7 @@ struct CPUPanel: View {
         let status = state.cpuStatus
         let displayValue = cpu == nil ? (status.isUnavailable ? "N/A" : "—") : nil
         VStack(alignment: .leading, spacing: 14) {
-            PanelHeader(title: "CPU", symbol: "cpu", fraction: cpu?.total ?? 0,
+            PanelHeader(title: "CPU", symbol: MetricKind.cpu.symbolName, fraction: cpu?.total ?? 0,
                         displayValue: displayValue)
 
             HistoryChart(samples: state.cpuHistory.values,
@@ -229,7 +229,7 @@ struct MemoryPanel: View {
         let displayValue = memory == nil ? (status.isUnavailable ? "N/A" : "—") : nil
         VStack(alignment: .leading, spacing: 14) {
             PanelHeader(
-                title: "Memory", symbol: "memorychip",
+                title: "Memory", symbol: MetricKind.memory.symbolName,
                 fraction: memory?.usage ?? 0,
                 tint: memory.map { Theme.pressure($0.pressure) },
                 displayValue: displayValue,
@@ -416,9 +416,9 @@ struct NetworkPanel: View {
             }
 
             HStack(spacing: 16) {
-                bigRate(title: "Download rate", symbol: "arrow.down", color: Theme.download,
+                bigRate(title: "Download", symbol: "arrow.down", color: Theme.download,
                         value: network.map { Fmt.rate($0.downloadBytesPerSec) } ?? "—")
-                bigRate(title: "Upload rate", symbol: "arrow.up", color: Theme.upload,
+                bigRate(title: "Upload", symbol: "arrow.up", color: Theme.upload,
                         value: network.map { Fmt.rate($0.uploadBytesPerSec) } ?? "—")
             }
 
@@ -432,13 +432,18 @@ struct NetworkPanel: View {
                     DetailRow(label: "Peak ↑", value: Fmt.rate(UInt64(uploadHistory.map(\.value).peak)), swatch: Theme.upload)
                     DetailRow(label: "Average ↓", value: Fmt.rate(UInt64(downloadHistory.map(\.value).mean)), swatch: Theme.download)
                     DetailRow(label: "Average ↑", value: Fmt.rate(UInt64(uploadHistory.map(\.value).mean)), swatch: Theme.upload)
-                    DetailRow(label: "Total ↓", value: Fmt.bytes(network.totalDownloaded), swatch: Theme.download)
-                    DetailRow(label: "Total ↑", value: Fmt.bytes(network.totalUploaded), swatch: Theme.upload)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    // The collector accumulates deltas from launch, not since boot.
+                    SectionLabel(text: "Since Info launched")
+                    DetailRow(label: "Downloaded", value: Fmt.bytes(network.totalDownloaded), swatch: Theme.download)
+                    DetailRow(label: "Uploaded", value: Fmt.bytes(network.totalUploaded), swatch: Theme.upload)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     SectionLabel(text: "Connection")
-                    DetailRow(label: "Interface", value: network.interface ?? "—")
+                    DetailRow(label: "Interface", value: network.interface.map(NetworkInfo.displayName(for:)) ?? "—")
                     DetailRow(label: "Local IP", value: localIP ?? "—")
                     if prefs.showConnectivity {
                         DetailRow(label: "Latency",
@@ -492,7 +497,10 @@ struct NetworkPanel: View {
 
     private func bigRate(title: String, symbol: String, color: Color, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Image(systemName: symbol).foregroundStyle(color)
+            HStack(spacing: 4) {
+                Image(systemName: symbol).foregroundStyle(color)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
             Text(value).font(.system(.title3, design: .rounded)).monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -500,7 +508,7 @@ struct NetworkPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
+        .accessibilityLabel("\(title) rate")
         .accessibilityValue(value)
     }
 }

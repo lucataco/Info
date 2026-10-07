@@ -14,7 +14,7 @@ final class WindowManager {
         if settingsWindow == nil {
             let window = makeWindow(title: "Info Settings",
                                     style: [.titled, .closable, .miniaturizable],
-                                    size: NSSize(width: 440, height: 480))
+                                    size: NSSize(width: 440, height: 560))
             window.contentViewController = NSHostingController(rootView: content())
             settingsWindow = window
         }
@@ -57,7 +57,7 @@ final class WindowManager {
 
     private func present(_ window: NSWindow?) {
         guard let window else { return }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window.center()
         window.makeKeyAndOrderFront(nil)
     }

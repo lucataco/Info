@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import SystemConfiguration
 
 @MainActor
 enum NetworkInfo {
@@ -10,6 +11,18 @@ enum NetworkInfo {
 
     private static var cache: [String: CacheEntry] = [:]
     private static let cacheLifetime: TimeInterval = 30
+    private static var displayNames: [String: String] = [:]
+
+    /// Human-readable name for a BSD interface ("en15" → "Ethernet"), as shown
+    /// in System Settings › Network. Falls back to the BSD name.
+    static func displayName(for interface: String) -> String {
+        if let cached = displayNames[interface] { return cached }
+        let all = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] ?? []
+        let match = all.first { SCNetworkInterfaceGetBSDName($0) as String? == interface }
+        let name = match.flatMap { SCNetworkInterfaceGetLocalizedDisplayName($0) as String? } ?? interface
+        displayNames[interface] = name
+        return name
+    }
 
     static func localAddress(interface: String? = nil) -> String? {
         let key = interface ?? "*"

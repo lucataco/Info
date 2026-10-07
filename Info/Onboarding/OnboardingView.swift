@@ -19,7 +19,6 @@ struct OnboardingView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var requiresLoginApproval = LaunchAtLogin.requiresApproval
     @State private var loginChangeFailed = false
-    @State private var visibilityAdvanceTask: Task<Void, Never>?
 
     private let lastStep = 4
 
@@ -113,18 +112,6 @@ struct OnboardingView: View {
         .onReceive(Timer.publish(every: 0.6, on: .main, in: .common).autoconnect()) { _ in
             menuBarVisible = MenuBarVisibility.isLikelyVisible(statusItemsProvider())
         }
-        .onChange(of: menuBarVisible) { _, visible in
-            visibilityAdvanceTask?.cancel()
-            guard visible, step == 1 else { return }
-            visibilityAdvanceTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(2))
-                guard !Task.isCancelled, menuBarVisible, step == 1 else { return }
-                withAnimation { step = 2 }
-            }
-        }
-        .onDisappear {
-            visibilityAdvanceTask?.cancel()
-        }
     }
 
     private var loginStep: some View {
@@ -132,7 +119,7 @@ struct OnboardingView: View {
             HeroIcon(symbol: "power", colors: [.green, .mint])
             Text("Start automatically")
                 .font(.system(.title, design: .rounded).weight(.bold))
-            Text("Info launches quietly when you log in, so your stats are always there.")
+            Text("Have Info start quietly when you log in, so your stats are always there.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
@@ -215,8 +202,6 @@ struct OnboardingView: View {
                     .controlSize(.large)
             }
             Spacer()
-            StepDots(count: lastStep + 1, current: step)
-            Spacer()
             if step < lastStep {
                 Button("Skip") { onFinish() }
                     .buttonStyle(.borderless)
@@ -233,6 +218,10 @@ struct OnboardingView: View {
             }
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
+        }
+        // Overlaid so the dots stay centered whatever buttons flank them.
+        .overlay {
+            StepDots(count: lastStep + 1, current: step)
         }
     }
 }
@@ -276,6 +265,7 @@ private struct MetricChooserRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Label(kind.title, systemImage: kind.symbolName)
+                .labelStyle(.fixedIcon)
                 .font(.headline)
                 .frame(width: 120, alignment: .leading)
 
@@ -288,6 +278,7 @@ private struct MetricChooserRow: View {
                 Text(kind.title)
             }
             .labelsHidden()
+            .toggleStyle(.switch)
             .accessibilityLabel("Show \(kind.title) in menu bar")
             .accessibilityValue(isOn ? "On" : "Off")
             .accessibilityHint("Double-click to \(isOn ? "hide" : "show") \(kind.title) in the menu bar.")

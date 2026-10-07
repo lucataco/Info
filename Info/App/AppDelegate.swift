@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engine: MetricsEngine?
     private var statusController: StatusItemController?
     private var powerGate: PowerGate?
-    private var activity: AppActivityState?
     private let windows = WindowManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,7 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.start()
 
         let powerGate = PowerGate(engine: engine, activity: activity)
-        activity.start()
         powerGate.start()
 
         self.prefs = prefs
@@ -44,7 +42,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusController = controller
         self.engine = engine
         self.powerGate = powerGate
-        self.activity = activity
 
         if !prefs.didOnboard {
             showOnboarding()
@@ -113,7 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         Log.app.info("Info terminating")
         self.powerGate?.stop()
-        self.activity?.stop()
         self.engine?.stop()
         self.statusController?.tearDown()
     }
@@ -199,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SettingsView(
                 prefs: prefs,
                 state: state,
+                menuBarOrder: { [weak self] in self?.statusController?.menuBarOrder ?? [] },
                 onMetricsChanged: { [weak self] in
                     guard let self, let prefs = self.prefs else { return }
                     self.state?.setEnabledMetrics(prefs.enabledMetrics)

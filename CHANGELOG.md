@@ -6,6 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-10-06
+
+### Fixed
+- Top processes, temperature, latency, and public IP load again — they were
+  gated on Info being the active app, which it never is while a panel is open.
+- Clicking a menu bar item again now closes its panel instead of reopening it.
+- Escape closes the panel; it now takes key focus without activating Info.
+- Removed the empty band above the panel header.
+- Settings is taller so the Menu Bar and General tabs no longer clip.
+- Onboarding no longer skips past the menu bar step on its own.
+- The menu bar item shows a selected pill while its panel is open.
+- Chart axis labels no longer crowd the readout above and time caption below.
+- Onboarding step dots stay centered; metric toggles there are now switches.
+- Metric names line up regardless of icon width in Settings and onboarding.
+- The Settings menu bar preview follows your actual menu bar order.
+- Menu bar graphs scale to 25%, 50%, or 100% so light loads stay readable.
+- A 0% gauge no longer shows a stray dot.
+
+### Changed
+- Network panel: rates are labeled Download/Upload, totals are labeled
+  "Since Info launched", and the interface shows its name (e.g. "Ethernet")
+  instead of the BSD name.
+- Panel headers use the same metric icons as the menu bar and Settings.
+- Panels have a VoiceOver title ("CPU details", …).
+- Clarified the latency and launch-at-login copy.
+
 ## [0.5.1] — 2026-09-24
 
 ### Fixed

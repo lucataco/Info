@@ -80,6 +80,13 @@ final class MenuBarItemView: NSView {
         didSet { if style != oldValue { needsDisplay = true } }
     }
 
+    /// Shows a pill behind the content while this item's panel is open.
+    /// `NSStatusBarButton.highlight(_:)` doesn't render for custom-drawn items
+    /// on macOS 26, so the view draws its own selected state.
+    var isSelected = false {
+        didSet { if isSelected != oldValue { needsDisplay = true } }
+    }
+
     private var single: [Double] = []
     private var mirrorTop: [Double] = []
     private var mirrorBottom: [Double] = []
@@ -242,6 +249,10 @@ final class MenuBarItemView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         NSBezierPath(rect: bounds).addClip()
+        if isSelected {
+            NSColor.labelColor.withAlphaComponent(0.18).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 5, yRadius: 5).fill()
+        }
         let h = bounds.height
         if effectiveLayout == .stacked {
             drawStacked(height: h)
@@ -412,11 +423,22 @@ final class MenuBarItemView: NSView {
         return out
     }
 
+    /// Top of the sparkline's Y scale: the smallest of 25%, 50%, or 100% that
+    /// keeps the visible history in its lower 80%. Typical light loads would
+    /// otherwise draw as a flat line along the bottom of a ~16pt-tall graph;
+    /// fixed steps keep the scale from jumping around with every sample, and
+    /// the headroom stops a steady value just under a step reading as "full".
+    nonisolated static func sparklineCeiling(for values: [Double]) -> Double {
+        let peak = values.max() ?? 0
+        return [0.25, 0.5].first { peak <= $0 * 0.8 } ?? 1
+    }
+
     private func drawSingle(in rect: NSRect) {
         guard single.count > 1 else { return }
         let stepX = rect.width / CGFloat(single.count - 1)
+        let ceiling = Self.sparklineCeiling(for: single)
         func point(_ i: Int) -> NSPoint {
-            let v = min(1, max(0, single[i]))
+            let v = min(1, max(0, single[i] / ceiling))
             return NSPoint(x: rect.minX + CGFloat(i) * stepX, y: rect.minY + v * rect.height)
         }
 
